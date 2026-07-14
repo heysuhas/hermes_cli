@@ -1538,10 +1538,21 @@ function Install-Repository {
                     Move-Item $extractedDir.FullName $InstallDir -Force
                     Write-Success "Downloaded and extracted"
 
-                    # Initialize git repo so updates work later
+                    # Initialize git repo so updates work later. The extracted
+                    # ZIP files are untracked; create a local snapshot commit
+                    # before the post-install pin fetch/checkout, otherwise
+                    # Git refuses to overwrite them with the pinned tree.
                     Push-Location $InstallDir
                     git -c windows.appendAtomically=false init 2>$null
                     git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
+                    git -c windows.appendAtomically=false config user.name "SR Installer" 2>$null
+                    git -c windows.appendAtomically=false config user.email "sr-installer@localhost" 2>$null
+                    git -c windows.appendAtomically=false add -A
+                    git -c windows.appendAtomically=false commit --no-verify -m "Bootstrap ZIP snapshot" 2>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        Pop-Location
+                        throw "Could not create the ZIP fallback Git snapshot"
+                    }
                     git remote add origin $RepoUrlHttps 2>$null
                     Pop-Location
                     Write-Success "Git repo initialized for future updates"
