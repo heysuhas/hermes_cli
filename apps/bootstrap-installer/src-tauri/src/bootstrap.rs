@@ -12,7 +12,7 @@
 //!   4. Worker iterates stages, calling `install.ps1 -Stage NAME -NonInteractive -Json`.
 //!   5. On success → `complete`. On any stage failure → `failed`. On cancel → `failed`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -160,6 +160,40 @@ pub async fn get_bootstrap_status(
     })
 }
 
+fn corporate_console_command(exe: &Path, install_root: &Path) -> std::process::Command {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let comspec = std::env::var_os("ComSpec")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("SystemRoot")
+                    .map(|root| PathBuf::from(root).join("System32").join("cmd.exe"))
+            })
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+
+        let mut command = std::process::Command::new(comspec);
+
+        // cmd.exe parses /C as a command string. raw_arg preserves the
+        // nested quotes needed for paths containing spaces.
+        command.raw_arg(format!(r#"/d /s /c ""{}"" "#, exe.display()));
+
+        command
+            .current_dir(install_root)
+            .creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE
+
+        command
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut command = std::process::Command::new(exe);
+        command.current_dir(install_root);
+        command
+    }
+}
+
 /// Spawn the managed employee console launcher, then close the installer
 /// window. Caller resolves the binary path from `install_root`.
 ///
@@ -181,15 +215,8 @@ pub async fn launch_sr_corporate(app: AppHandle, install_root: String) -> Result
     })?;
 
     tracing::info!(?exe_path, "launching SR corporate console");
-    let mut cmd = std::process::Command::new(&exe_path);
-    cmd.current_dir(&install_root);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NEW_CONSOLE gives the employee a deliberate chat console while
-        // keeping the installer itself windowless.
-        cmd.creation_flags(0x0000_0010);
-    }
+    let mut cmd = corporate_console_command(&exe_path, &install_root);
+
     cmd.spawn()
         .map_err(|e| format!("failed to launch {}: {e}", exe_path.display()))?;
     std::thread::sleep(std::time::Duration::from_millis(150));
@@ -305,15 +332,7 @@ pub(crate) fn spawn_installed_corporate(install_root: &std::path::Path) -> std::
     let exe = resolve_sr_corporate_exe(install_root).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "no SR corporate launcher")
     })?;
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.current_dir(install_root);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NEW_CONSOLE keeps the shared installer windowless and gives
-        // the employee a real terminal for the interactive agent.
-        cmd.creation_flags(0x0000_0010);
-    }
+    let mut cmd = corporate_console_command(&exe, install_root);
     cmd.spawn().map(|_child| ())
 }
 
