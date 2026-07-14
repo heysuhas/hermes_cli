@@ -106,10 +106,7 @@ function embeddedImageRemovalRange(text: string, dataStart: number, dataEnd: num
 }
 
 function normalizeCleanedText(text: string): string {
-  return text
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 export function extractEmbeddedImages(text: string): EmbeddedImageExtraction {

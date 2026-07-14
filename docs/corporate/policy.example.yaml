@@ -1,0 +1,67 @@
+version: 1
+
+allowed_tools:
+  - terminal
+  - process
+  - read_file
+  - write_file
+  - patch
+  - search_files
+  - skills_list
+  - skill_view
+  - skill_manage
+  - todo
+  - memory
+  - session_search
+  - clarify
+  - local_access_status
+  - mail_client_status
+  - mail_list_folders
+  - mail_list_messages
+  - mail_get_message
+  - mail_create_draft
+  - mail_update_draft
+  - document_inspect
+  - document_extract
+  - office_plan_changes
+  - office_apply_changes
+
+allowed_plugins:
+  - corporate_local
+  - corporate_office
+  - outlook
+
+allowed_roots:
+  - C:\Users\Public\Documents\Hermes
+allowed_root_parents:
+  - C:\Users
+  - D:\CorporateWork
+
+max_document_bytes: 52428800
+
+network:
+  allow_intranet: false
+  allowed_hosts: []
+
+terminal:
+  block_network: true
+  network_exceptions: []
+  denied_patterns:
+    - '\breg(?:\.exe)?\s+(?:add|delete)\b'
+    - '\b(?:shutdown|bcdedit|diskpart)\b'
+
+skills:
+  allow_local_creation: true
+  require_broker_signature: true
+
+broker:
+  url: http://127.0.0.1:8765
+  executable_path: C:\Program Files\Hermes Broker\hermes-broker.exe
+  signer_thumbprint: REPLACE_WITH_CODESIGNING_CERTIFICATE_THUMBPRINT
+  token_file: C:\ProgramData\Hermes\broker.token
+  public_key_file: C:\ProgramData\Hermes\broker-public.pem
+
+audit:
+  enabled: true
+  include_paths: false
+  retention_days: 30

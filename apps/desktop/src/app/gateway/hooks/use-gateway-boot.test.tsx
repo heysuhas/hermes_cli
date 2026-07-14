@@ -7,7 +7,7 @@ import { $gatewayState } from '@/store/session'
 import { useGatewayBoot } from './use-gateway-boot'
 
 // End-to-end-ish repro of the "remote VPS → stuck on CONNECTING, no Settings"
-// bug that drives the REAL useGatewayBoot hook + REAL SRGateway through a
+// bug that drives the REAL useGatewayBoot hook + REAL HermesGateway through a
 // fake WebSocket we fully control. No Docker / no real port: from the desktop's
 // point of view a "remote VPS" is just a WebSocket that opens once and later
 // refuses to reopen, so that is exactly (and only) what we fake.
@@ -68,9 +68,7 @@ class FakeWebSocket {
   }
 
   private emit(type: string, ev: unknown) {
-    for (const fn of this.listeners[type] ?? []) {
-      fn(ev)
-    }
+    for (const fn of this.listeners[type] ?? []) fn(ev)
   }
 }
 
@@ -97,7 +95,6 @@ function fakeDesktop() {
     })),
     onBootProgress: vi.fn(() => () => undefined),
     onBackendExit: vi.fn(() => () => undefined),
-    onConnectionApplied: vi.fn(() => () => undefined),
     onPowerResume: vi.fn(() => () => undefined),
     onWindowStateChanged: vi.fn(() => () => undefined),
     touchBackend: vi.fn(async () => undefined),
@@ -110,7 +107,7 @@ function Harness() {
     handleGatewayEvent: () => undefined,
     onConnectionReady: () => undefined,
     onGatewayReady: () => undefined,
-    refreshSRConfig: async () => undefined,
+    refreshHermesConfig: async () => undefined,
     refreshSessions: async () => undefined
   })
 
@@ -124,7 +121,7 @@ beforeEach(() => {
   FakeWebSocket.mode = 'open'
   FakeWebSocket.instances = []
   ;(globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket
-  ;(window as { srDesktop?: unknown }).srDesktop = fakeDesktop()
+  ;(window as { hermesDesktop?: unknown }).hermesDesktop = fakeDesktop()
   $gatewayState.set('idle')
   $desktopBoot.set({
     error: null,
@@ -142,7 +139,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   ;(globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket
-  delete (window as { srDesktop?: unknown }).srDesktop
+  delete (window as { hermesDesktop?: unknown }).hermesDesktop
 })
 
 // Let pending microtasks (awaits) AND the queued 0ms socket open/error fire.
@@ -162,9 +159,9 @@ async function advanceBackoff() {
 }
 
 describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => {
-  it('INITIAL boot against a dead VPS: getConnection hangs (waitForSR) → app sits in the connecting combo, then fails', async () => {
+  it('INITIAL boot against a dead VPS: getConnection hangs (waitForHermes) → app sits in the connecting combo, then fails', async () => {
     // The report's actual path: a fresh launch pointed at an unreachable VPS.
-    // startSR()'s remote branch awaits waitForSR() for 45s before it
+    // startHermes()'s remote branch awaits waitForHermes() for 45s before it
     // throws, so the renderer's `await desktop.getConnection()` stays pending
     // that whole window. During it: gatewayState is still 'idle' (connect was
     // never reached) and boot.error is null → connecting=true → the fullscreen
@@ -177,7 +174,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
           rejectConn = reject
         })
     )
-    ;(window as { srDesktop?: unknown }).srDesktop = desktop
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
 
     render(<Harness />)
     await flushAsync()
@@ -189,10 +186,10 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($desktopBoot.get().error).toBeNull()
     // ^ connecting === true here → fullscreen CONNECTING, no Settings.
 
-    // After ~45s waitForSR gives up and getConnection rejects → boot()
+    // After ~45s waitForHermes gives up and getConnection rejects → boot()
     // catch → failDesktopBoot → the BootFailureOverlay recovery surface.
     await act(async () => {
-      rejectConn(new Error('SR backend did not become ready: timeout'))
+      rejectConn(new Error('Hermes backend did not become ready: timeout'))
       await vi.advanceTimersByTimeAsync(0)
     })
 
@@ -253,11 +250,9 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     FakeWebSocket.mode = 'fail'
     act(() => FakeWebSocket.instances[0].drop())
     await flushAsync()
-
     for (let i = 0; i < 8; i += 1) {
       await advanceBackoff()
     }
-
     expect($desktopBoot.get().error).toBeTruthy()
 
     // The remote comes back: next reconnect attempt opens.

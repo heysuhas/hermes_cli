@@ -1,8 +1,7 @@
 import type { Unstable_TriggerAdapter, Unstable_TriggerItem } from '@assistant-ui/core'
 import { useCallback } from 'react'
 
-import type { SRGateway } from '@/sr'
-import { normalize } from '@/lib/text'
+import type { HermesGateway } from '@/hermes'
 
 import type { CompletionEntry, CompletionPayload } from './use-live-completion-adapter'
 import { useLiveCompletionAdapter } from './use-live-completion-adapter'
@@ -20,7 +19,7 @@ const STARTER_META: Record<string, string> = {
 }
 
 function starterEntries(query: string): CompletionEntry[] {
-  const q = normalize(query)
+  const q = query.trim().toLowerCase()
   const kinds = Array.from(REF_STARTERS)
   const filtered = q ? kinds.filter(kind => kind.startsWith(q)) : kinds
 
@@ -75,7 +74,7 @@ function classify(entry: CompletionEntry): {
 
 /** Live `@` completions backed by the gateway's `complete.path` RPC. */
 export function useAtCompletions(options: {
-  gateway: SRGateway | null
+  gateway: HermesGateway | null
   sessionId: string | null
   cwd: string | null
 }): { adapter: Unstable_TriggerAdapter; loading: boolean } {

@@ -1,5 +1,5 @@
 {
-  "name": "sr-agent",
+  "name": "hermes-agent",
   "version": "1.0.0",
   "description": "An AI agent with advanced tool-calling capabilities, featuring a flexible toolsets system for organizing and managing tools.",
   "private": true,
@@ -24,16 +24,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/heysuhas/hermes_cli.git"
+    "url": "git+https://github.com/NousResearch/Hermes-Agent.git"
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/heysuhas/hermes_cli/issues"
+    "url": "https://github.com/NousResearch/Hermes-Agent/issues"
   },
-  "homepage": "https://github.com/heysuhas/hermes_cli#readme",
+  "homepage": "https://github.com/NousResearch/Hermes-Agent#readme",
   "dependencies": {
     "@streamdown/math": "^1.0.2",
-    "agent-browser": "^0.26.0"
+    "agent-browser": "^0.26.0",
+    "pptxgenjs": "^4.0.1"
   },
   "overrides": {
     "lodash": "4.18.1",

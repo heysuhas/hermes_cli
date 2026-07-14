@@ -1,9 +1,9 @@
 //! Bootstrap orchestration.
 //!
-//! Direct port of `runBootstrap` from `apps/desktop/electron/bootstrap-runner.ts`.
+//! Direct port of `runBootstrap` from `apps/desktop/electron/bootstrap-runner.cjs`.
 //! Drives install.ps1 / install.sh stage-by-stage, emits progress events
 //! over the Tauri `bootstrap` channel, writes a forensic log to
-//! SR_HOME/logs/bootstrap-<timestamp>.log.
+//! HERMES_HOME/logs/bootstrap-<timestamp>.log.
 //!
 //! Lifecycle:
 //!   1. `start_bootstrap` (Tauri command) → spawns the worker task.
@@ -43,13 +43,9 @@ pub struct StartBootstrapArgs {
     /// bootstrap-runner passes false to avoid building-while-running.
     #[serde(default = "default_true")]
     pub include_desktop: bool,
-    /// Corporate installation mode: creates the employee-only launcher and
-    /// deliberately avoids putting the developer CLI on PATH.
-    #[serde(default = "default_true")]
-    pub corporate: bool,
-    /// Optional override for SR_HOME. Tests use this; production
+    /// Optional override for HERMES_HOME. Tests use this; production
     /// almost always falls back to the OS default.
-    pub sr_home: Option<String>,
+    pub hermes_home: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -160,63 +156,31 @@ pub async fn get_bootstrap_status(
     })
 }
 
-/// Spawn the managed employee console launcher, then close the installer
+/// Spawn the locally-built Hermes desktop binary, then close the installer
 /// window. Caller resolves the binary path from `install_root`.
 ///
-/// Returns Err with a human-readable message if the launcher doesn't exist so
-/// the frontend can present actionable failure UI rather than silently doing
-/// nothing.
+/// Returns Err with a human-readable message if the binary doesn't exist
+/// (e.g. when Stage-Desktop was skipped) so the frontend can present
+/// actionable failure UI rather than silently doing nothing.
 #[tauri::command]
-pub async fn launch_sr_corporate(app: AppHandle, install_root: String) -> Result<(), String> {
+pub async fn launch_hermes_desktop(
+    app: AppHandle,
+    install_root: String,
+) -> Result<(), String> {
     let install_root = PathBuf::from(install_root);
-    let exe_path = resolve_sr_corporate_exe(&install_root).ok_or_else(|| {
+    let exe_path = resolve_hermes_desktop_exe(&install_root).ok_or_else(|| {
         format!(
-            "Couldn't find the SR corporate launcher at {}. Re-run setup or contact IT support.",
-            install_root
-                .join("venv")
-                .join("Scripts")
-                .join("sr-corporate.exe")
-                .display()
-        )
-    })?;
-
-    tracing::info!(?exe_path, "launching SR corporate console");
-    let mut cmd = std::process::Command::new(&exe_path);
-    cmd.current_dir(&install_root);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NEW_CONSOLE gives the employee a deliberate chat console while
-        // keeping the installer itself windowless.
-        cmd.creation_flags(0x0000_0010);
-    }
-    cmd.spawn()
-        .map_err(|e| format!("failed to launch {}: {e}", exe_path.display()))?;
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    app.exit(0);
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn launch_sr_desktop(app: AppHandle, install_root: String) -> Result<(), String> {
-    let install_root = PathBuf::from(install_root);
-    let exe_path = resolve_sr_desktop_exe(&install_root).ok_or_else(|| {
-        format!(
-            "Couldn't find a built SR desktop at {}. The desktop build step \
-             may have been skipped or failed. Run `sr desktop` from a \
+            "Couldn't find a built Hermes desktop at {}. The desktop build step \
+             may have been skipped or failed. Run `hermes desktop` from a \
              terminal to build and launch it.",
-            install_root
-                .join("apps")
-                .join("desktop")
-                .join("release")
-                .display()
+            install_root.join("apps").join("desktop").join("release").display()
         )
     })?;
 
-    tracing::info!(?exe_path, "launching SR desktop");
+    tracing::info!(?exe_path, "launching Hermes desktop");
 
     // Detach from us — the installer is about to exit. On macOS launch the
-    // bundle through LaunchServices instead of exec'ing Contents/MacOS/SR
+    // bundle through LaunchServices instead of exec'ing Contents/MacOS/Hermes
     // directly; this matches user double-click/open behavior and avoids cwd /
     // quarantine oddities after a self-update rebuild.
     let mut cmd = desktop_launch_command(&exe_path, &install_root);
@@ -227,8 +191,12 @@ pub async fn launch_sr_desktop(app: AppHandle, install_root: String) -> Result<(
         cmd.creation_flags(0x0000_0008);
     }
 
-    cmd.spawn()
-        .map_err(|e| format!("failed to launch {}: {e}", exe_path.display()))?;
+    cmd.spawn().map_err(|e| {
+        format!(
+            "failed to launch {}: {e}",
+            exe_path.display()
+        )
+    })?;
 
     // Give Windows ~150ms to actually start the new process before we exit.
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
@@ -242,28 +210,20 @@ pub async fn launch_sr_desktop(app: AppHandle, install_root: String) -> Result<(
 /// Walks the well-known electron-builder unpacked-app paths under
 /// `install_root`. Mirrors the resolver in `cmd_gui` (apps/desktop/release/
 /// <os>-unpacked/<exe>).
-pub(crate) fn resolve_sr_corporate_exe(install_root: &std::path::Path) -> Option<PathBuf> {
-    let candidates = [
-        install_root
-            .join("venv")
-            .join("Scripts")
-            .join("sr-corporate.exe"),
-        install_root.join("venv").join("bin").join("sr-corporate"),
-    ];
-    candidates.into_iter().find(|path| path.exists())
-}
-
-pub(crate) fn resolve_sr_desktop_exe(install_root: &std::path::Path) -> Option<PathBuf> {
+pub(crate) fn resolve_hermes_desktop_exe(install_root: &std::path::Path) -> Option<PathBuf> {
     let release_dir = install_root.join("apps").join("desktop").join("release");
     let candidates: &[(&str, &str)] = if cfg!(target_os = "windows") {
-        &[("win-unpacked", "SR.exe"), ("win-arm64-unpacked", "SR.exe")]
+        &[
+            ("win-unpacked", "Hermes.exe"),
+            ("win-arm64-unpacked", "Hermes.exe"),
+        ]
     } else if cfg!(target_os = "macos") {
         &[
-            ("mac/SR.app/Contents/MacOS", "SR"),
-            ("mac-arm64/SR.app/Contents/MacOS", "SR"),
+            ("mac/Hermes.app/Contents/MacOS", "Hermes"),
+            ("mac-arm64/Hermes.app/Contents/MacOS", "Hermes"),
         ]
     } else {
-        &[("linux-unpacked", "sr")]
+        &[("linux-unpacked", "hermes")]
     };
     for (subdir, exe) in candidates {
         let p = release_dir.join(subdir).join(exe);
@@ -274,11 +234,11 @@ pub(crate) fn resolve_sr_desktop_exe(install_root: &std::path::Path) -> Option<P
     None
 }
 
-pub(crate) fn resolve_sr_desktop_app(install_root: &std::path::Path) -> Option<PathBuf> {
-    let exe = resolve_sr_desktop_exe(install_root)?;
+pub(crate) fn resolve_hermes_desktop_app(install_root: &std::path::Path) -> Option<PathBuf> {
+    let exe = resolve_hermes_desktop_exe(install_root)?;
     #[cfg(target_os = "macos")]
     {
-        // .../SR.app/Contents/MacOS/SR -> .../SR.app
+        // .../Hermes.app/Contents/MacOS/Hermes -> .../Hermes.app
         let app = exe.parent()?.parent()?.parent()?.to_path_buf();
         if app.extension().and_then(|e| e.to_str()) == Some("app") && app.is_dir() {
             return Some(app);
@@ -292,44 +252,27 @@ pub(crate) fn resolve_sr_desktop_app(install_root: &std::path::Path) -> Option<P
     None
 }
 
-/// True when a prior corporate install completed and the employee launcher
-/// exists. The shared SR-Setup.exe uses this to become a terminal launcher on
-/// subsequent Windows launches instead of showing the installer UI again.
-pub(crate) fn corporate_is_installed(install_root: &std::path::Path) -> bool {
-    install_root.join(".corporate-install").exists()
-        && resolve_sr_corporate_exe(install_root).is_some()
-}
-
-/// Spawn the already-installed corporate console in a new Windows console.
-pub(crate) fn spawn_installed_corporate(install_root: &std::path::Path) -> std::io::Result<()> {
-    let exe = resolve_sr_corporate_exe(install_root).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "no SR corporate launcher")
-    })?;
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.current_dir(install_root);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NEW_CONSOLE keeps the shared installer windowless and gives
-        // the employee a real terminal for the interactive agent.
-        cmd.creation_flags(0x0000_0010);
-    }
-    cmd.spawn().map(|_child| ())
+/// True when a prior install completed (bootstrap-complete marker present) AND a
+/// launchable desktop app exists on disk. Used by the installer's launcher fast
+/// path so a bare re-open just opens Hermes instead of re-running setup.
+pub(crate) fn hermes_is_installed(install_root: &std::path::Path) -> bool {
+    install_root.join(".hermes-bootstrap-complete").exists()
+        && resolve_hermes_desktop_exe(install_root).is_some()
 }
 
 /// Spawn the already-built desktop app, detached. Returns Err if no built app
 /// exists or the spawn fails, so the caller can fall back to showing the
 /// installer UI.
 pub(crate) fn spawn_installed_desktop(install_root: &std::path::Path) -> std::io::Result<()> {
-    let exe = resolve_sr_desktop_exe(install_root).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "no built SR desktop app")
+    let exe = resolve_hermes_desktop_exe(install_root).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "no built Hermes desktop app")
     })?;
     let mut cmd = desktop_launch_command_std(&exe, install_root);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         // DETACHED_PROCESS = 0x00000008 — keep the desktop alive after the
-        // installer exits, mirroring launch_sr_desktop. Kept correct here
+        // installer exits, mirroring launch_hermes_desktop. Kept correct here
         // even though the only caller is macOS-gated today, so future reuse on
         // Windows doesn't reintroduce the relaunch race.
         cmd.creation_flags(0x0000_0008);
@@ -341,7 +284,7 @@ pub(crate) fn spawn_installed_desktop(install_root: &std::path::Path) -> std::io
 pub(crate) fn open_macos_app_detached(app_bundle: &std::path::Path) -> std::io::Result<()> {
     let mut cmd = std::process::Command::new("/usr/bin/open");
     cmd.arg(app_bundle);
-    cmd.current_dir(crate::paths::sr_home());
+    cmd.current_dir(crate::paths::hermes_home());
     cmd.spawn().map(|_child| ())
 }
 
@@ -364,7 +307,7 @@ fn desktop_launch_command(
         if let Some(app_bundle) = app_bundle_for_exe(exe_path) {
             let mut cmd = tokio::process::Command::new("/usr/bin/open");
             cmd.arg(app_bundle);
-            cmd.current_dir(crate::paths::sr_home());
+            cmd.current_dir(crate::paths::hermes_home());
             return cmd;
         }
     }
@@ -383,7 +326,7 @@ fn desktop_launch_command_std(
         if let Some(app_bundle) = app_bundle_for_exe(exe_path) {
             let mut cmd = std::process::Command::new("/usr/bin/open");
             cmd.arg(app_bundle);
-            cmd.current_dir(crate::paths::sr_home());
+            cmd.current_dir(crate::paths::hermes_home());
             return cmd;
         }
     }
@@ -405,19 +348,14 @@ async fn run_bootstrap(
     let kind = ScriptKind::for_current_os();
 
     let pin = Pin {
-        commit: args
-            .commit
-            .or_else(|| option_env_string("BUILD_PIN_COMMIT")),
-        branch: args
-            .branch
-            .or_else(|| option_env_string("BUILD_PIN_BRANCH")),
+        commit: args.commit.or_else(|| option_env_string("BUILD_PIN_COMMIT")),
+        branch: args.branch.or_else(|| option_env_string("BUILD_PIN_BRANCH")),
     };
 
     tracing::info!(
         ?pin,
         kind = ?kind,
         include_desktop = args.include_desktop,
-        corporate = args.corporate,
         "bootstrap starting"
     );
 
@@ -478,15 +416,12 @@ async fn run_bootstrap(
     if args.include_desktop {
         manifest_args_full.push("-IncludeDesktop".to_string());
     }
-    if args.corporate {
-        manifest_args_full.push("-Corporate".to_string());
-    }
 
     let manifest_result = run_install_script(
         &app,
         &script.path,
         &manifest_args_full,
-        args.sr_home.as_deref(),
+        args.hermes_home.as_deref(),
         None,
         Some("__manifest__".to_string()),
     )
@@ -508,21 +443,20 @@ async fn run_bootstrap(
         return Err(anyhow!(err));
     }
 
-    let manifest: Manifest =
-        powershell::parse_manifest(&manifest_result.stdout).ok_or_else(|| {
-            let err = format!(
-                "install.ps1 -Manifest produced no parseable JSON payload\n{}",
-                truncate(&manifest_result.stdout, 4000)
-            );
-            emit_event(
-                &app,
-                BootstrapEvent::Failed {
-                    stage: None,
-                    error: err.clone(),
-                },
-            );
-            anyhow!(err)
-        })?;
+    let manifest: Manifest = powershell::parse_manifest(&manifest_result.stdout).ok_or_else(|| {
+        let err = format!(
+            "install.ps1 -Manifest produced no parseable JSON payload\n{}",
+            truncate(&manifest_result.stdout, 4000)
+        );
+        emit_event(
+            &app,
+            BootstrapEvent::Failed {
+                stage: None,
+                error: err.clone(),
+            },
+        );
+        anyhow!(err)
+    })?;
 
     emit_event(
         &app,
@@ -585,9 +519,6 @@ async fn run_bootstrap(
         if args.include_desktop {
             stage_args.push("-IncludeDesktop".to_string());
         }
-        if args.corporate {
-            stage_args.push("-Corporate".to_string());
-        }
 
         // Each stage gets its own cancel receiver because tokio::select!
         // in run_script consumes it. Take/return through the Arc<Mutex>.
@@ -597,7 +528,7 @@ async fn run_bootstrap(
             &app,
             &script.path,
             &stage_args,
-            args.sr_home.as_deref(),
+            args.hermes_home.as_deref(),
             local_cancel_rx,
             Some(stage.name.clone()),
         )
@@ -705,21 +636,21 @@ async fn run_bootstrap(
     }
 
     // 4. Resolve install_root. install.ps1 doesn't (yet) report this back
-    // explicitly; we infer it from $SRHome which Stage-Repository clones
-    // the repo INTO at $SRHome\sr-agent. Mirrors sr_constants.
-    let sr_home = args
-        .sr_home
+    // explicitly; we infer it from $HermesHome which Stage-Repository clones
+    // the repo INTO at $HermesHome\hermes-agent. Mirrors hermes_constants.
+    let hermes_home = args
+        .hermes_home
         .clone()
-        .unwrap_or_else(|| crate::paths::sr_home().to_string_lossy().into_owned());
-    let install_root = PathBuf::from(&sr_home).join("sr-agent");
+        .unwrap_or_else(|| crate::paths::hermes_home().to_string_lossy().into_owned());
+    let install_root = PathBuf::from(&hermes_home).join("hermes-agent");
 
-    // Copy ourselves to SR_HOME/sr-setup.exe so the desktop app can
+    // Copy ourselves to HERMES_HOME/hermes-setup.exe so the desktop app can
     // re-invoke us with `--update` and shortcuts have a stable target. This is
     // a one-shot install concern; an `--update` re-invocation no-ops because
     // we're already running from that path. Best-effort — a failure here must
     // not fail an otherwise-successful install.
-    if let Err(err) = crate::paths::copy_self_to_sr_home() {
-        tracing::warn!(?err, "failed to copy installer into SR_HOME (non-fatal)");
+    if let Err(err) = crate::paths::copy_self_to_hermes_home() {
+        tracing::warn!(?err, "failed to copy installer into HERMES_HOME (non-fatal)");
         emit_log(&format!(
             "[bootstrap] warning: could not stage updater binary: {err}"
         ));
@@ -752,7 +683,7 @@ async fn run_install_script(
     app: &AppHandle,
     script_path: &std::path::Path,
     args: &[String],
-    sr_home_override: Option<&str>,
+    hermes_home_override: Option<&str>,
     cancel_rx: Option<mpsc::Receiver<()>>,
     stage_name: Option<String>,
 ) -> Result<powershell::ScriptResult> {
@@ -804,7 +735,7 @@ async fn run_install_script(
         }),
     };
 
-    powershell::run_script(script_path, args, sink, sr_home_override, cancel_rx)
+    powershell::run_script(script_path, args, sink, hermes_home_override, cancel_rx)
         .await
         .map_err(|e| {
             tracing::error!(?e, "install script invocation failed");
@@ -890,12 +821,12 @@ fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use std::path::PathBuf;
+    use std::path::Path;
 
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
-            "sr-bootstrap-test-{tag}-{}-{}",
+            "hermes-bootstrap-test-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -913,22 +844,22 @@ mod tests {
         if cfg!(target_os = "macos") {
             let macos_dir = release
                 .join("mac-arm64")
-                .join("SR.app")
+                .join("Hermes.app")
                 .join("Contents")
                 .join("MacOS");
             std::fs::create_dir_all(&macos_dir).unwrap();
-            std::fs::write(macos_dir.join("SR"), b"#!/bin/sh\n").unwrap();
-            macos_dir.parent().unwrap().parent().unwrap().to_path_buf() // .../SR.app
+            std::fs::write(macos_dir.join("Hermes"), b"#!/bin/sh\n").unwrap();
+            macos_dir.parent().unwrap().parent().unwrap().to_path_buf() // .../Hermes.app
         } else if cfg!(target_os = "windows") {
             let dir = release.join("win-unpacked");
             std::fs::create_dir_all(&dir).unwrap();
-            let exe = dir.join("SR.exe");
+            let exe = dir.join("Hermes.exe");
             std::fs::write(&exe, b"stub").unwrap();
             exe
         } else {
             let dir = release.join("linux-unpacked");
             std::fs::create_dir_all(&dir).unwrap();
-            let exe = dir.join("sr");
+            let exe = dir.join("hermes");
             std::fs::write(&exe, b"stub").unwrap();
             exe
         }
@@ -936,15 +867,15 @@ mod tests {
 
     // The relaunch / install target is derived from the rebuilt desktop app.
     // On macOS this MUST resolve to the .app bundle (what `open` relaunches and
-    // what the updater ditto's over /Applications/SR.app). A regression in
+    // what the updater ditto's over /Applications/Hermes.app). A regression in
     // this derivation breaks the post-update auto-relaunch, so guard it.
     #[test]
-    fn resolve_sr_desktop_app_finds_built_bundle() {
+    fn resolve_hermes_desktop_app_finds_built_bundle() {
         let root = unique_tmp_dir("app-ok");
         let expected = make_release_tree(&root);
 
-        let resolved =
-            resolve_sr_desktop_app(&root).expect("should resolve the freshly-built desktop app");
+        let resolved = resolve_hermes_desktop_app(&root)
+            .expect("should resolve the freshly-built desktop app");
 
         #[cfg(target_os = "macos")]
         {
@@ -963,11 +894,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_sr_desktop_app_is_none_without_a_build() {
+    fn resolve_hermes_desktop_app_is_none_without_a_build() {
         let root = unique_tmp_dir("app-none");
         // No release tree created.
         assert!(
-            resolve_sr_desktop_app(&root).is_none(),
+            resolve_hermes_desktop_app(&root).is_none(),
             "no resolved app when nothing has been built"
         );
         let _ = std::fs::remove_dir_all(&root);

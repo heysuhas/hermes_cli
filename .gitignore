@@ -8,20 +8,19 @@ __pycache__/
 .venv
 .vscode/
 .env
-.op.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.development
 .env.test
-.sr-docker/
+.hermes-docker/
 .notebooklm-home/
 .notebooklm-cli-venv/
 .notebooklm-playwright/
 .pip-cache/
 .uv-cache/
-compose.sr.local.yml
+compose.hermes.local.yml
 export*
 __pycache__/model_tools.cpython-310.pyc
 __pycache__/web_tools.cpython-310.pyc
@@ -32,7 +31,7 @@ test_durations.json
 .pytest-cache/
 tmp/
 temp_vision_images/
-sr-*/*
+hermes-*/*
 examples/
 tests/quick_test_dataset.jsonl
 tests/sample_dataset.jsonl
@@ -51,21 +50,21 @@ agent-browser/
 privvy*
 images/
 __pycache__/
-sr_agent.egg-info/
+hermes_agent.egg-info/
 wandb/
 testlogs
 
 # CLI config (may contain sensitive SSH paths)
 cli-config.yaml
 
-# Skills Hub state (lives in ~/.sr/skills/.hub/ at runtime, but just in case)
+# Skills Hub state (lives in ~/.hermes/skills/.hub/ at runtime, but just in case)
 skills/.hub/
 ignored/
 .worktrees/
 environments/benchmarks/evals/
 
 # Web UI build output
-sr_cli/web_dist/
+hermes_cli/web_dist/
 apps/desktop/build/
 apps/desktop/dist/
 apps/desktop/release/
@@ -105,25 +104,22 @@ models-dev-upstream/
 opencode.json
 config/mcporter.json
 
-sr_cli/tui_dist/*
-sr_cli/scripts/
+hermes_cli/tui_dist/*
+hermes_cli/scripts/
 docs/superpowers/*
-# Working directory for the SR Agent's session state (~/.sr/ at runtime;
+# Working directory for the Hermes Agent's session state (~/.hermes/ at runtime;
 # also created in-repo when an agent operates in this checkout). Plans, audit
 # logs, and per-session caches are never artifacts of the codebase.
-.sr/
+.hermes/
 
 # Desktop/bootstrap install marker written into the managed checkout root by the
-# bootstrap installer. It is SR-managed runtime state, never a code change —
-# ignore it so `sr update`'s `git stash push --include-untracked` does not
+# bootstrap installer. It is Hermes-managed runtime state, never a code change —
+# ignore it so `hermes update`'s `git stash push --include-untracked` does not
 # treat it as a local edit and autostash it on every run (#38529).
-.sr-bootstrap-complete
-
-# Persistent dev sandbox dir (scripts/dev-sandbox.sh --persistent)
-.sr-sandbox/
+.hermes-bootstrap-complete
 
 # Interrupted-update breadcrumb + recovery lock written next to the shared venv
-# by `sr update` / launch-time self-heal. Runtime state, never a code change
+# by `hermes update` / launch-time self-heal. Runtime state, never a code change
 # — ignore so `git status` stays clean and update's autostash skips them.
 .update-incomplete
 .update-incomplete.lock
@@ -135,15 +131,9 @@ scripts/out/
 # Per-release changelog drafts. These exist only transiently during a release
 # cut (passed to `gh release create --notes-file`); the GitHub Release itself
 # stores the published notes. They are not a build artifact and must never be
-# committed to the repo root. See the sr-release skill.
+# committed to the repo root. See the hermes-release skill.
 RELEASE_v*.md
 
-# Desktop demo-run scratch output (sr writes demo/*.txt during recorded
+# Desktop demo-run scratch output (hermes writes demo/*.txt during recorded
 # walkthroughs). Throwaway artifacts, never part of the app.
 apps/desktop/demo/
-
-# PR infographics are rendered locally and embedded in PR descriptions via the
-# image-provider (fal.media) URL — they are NEVER committed to the repo. The
-# PR body is the archive. See the sr-agent-dev skill's
-# pr-infographic-workflow reference (storage rule + lapse #8 / #COMMIT-1).
-infographic/

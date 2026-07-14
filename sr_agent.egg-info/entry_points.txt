@@ -1,0 +1,5 @@
+[console_scripts]
+sr = sr_cli.main:main
+sr-acp = acp_adapter.entry:main
+sr-agent = run_agent:main
+sr-corporate = sr_cli.corporate:main

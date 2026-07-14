@@ -1,10 +1,9 @@
 import ignore from 'ignore'
 
-import type { SRReadDirEntry, SRReadDirResult } from '@/global'
 import { desktopFsCacheKey, desktopGitRoot, readDesktopDir, readDesktopFileDataUrl } from '@/lib/desktop-fs'
-import { ALWAYS_EXCLUDED } from '@/lib/excluded-paths'
+import type { HermesReadDirEntry, HermesReadDirResult } from '@/global'
 
-export type ProjectTreeEntry = SRReadDirEntry
+export type ProjectTreeEntry = HermesReadDirEntry
 
 interface GitignoreRule {
   base: string
@@ -69,7 +68,7 @@ async function gitRootFor(start: string) {
   let cached = gitRootCache.get(key)
 
   if (!cached) {
-    cached = desktopGitRoot(clean(start))
+    cached = desktopGitRoot(start)
     gitRootCache.set(key, cached)
   }
 
@@ -105,7 +104,7 @@ async function gitignoreFor(dir: string) {
   return cached
 }
 
-function ignoredBy(rules: GitignoreRule[], entry: SRReadDirEntry) {
+function ignoredBy(rules: GitignoreRule[], entry: HermesReadDirEntry) {
   return rules.some(rule => {
     const rel = relativeTo(rule.base, entry.path)
 
@@ -117,7 +116,7 @@ function ignoredBy(rules: GitignoreRule[], entry: SRReadDirEntry) {
   })
 }
 
-async function filterIgnored(entries: SRReadDirEntry[], rootPath: string, dirPath: string) {
+async function filterIgnored(entries: HermesReadDirEntry[], rootPath: string, dirPath: string) {
   const root = await gitRootFor(rootPath)
 
   if (!root) {
@@ -131,13 +130,13 @@ async function filterIgnored(entries: SRReadDirEntry[], rootPath: string, dirPat
   return rules.length > 0 ? entries.filter(entry => !ignoredBy(rules, entry)) : entries
 }
 
-export async function readProjectDir(dirPath: string, rootPath = dirPath): Promise<SRReadDirResult> {
-  if (!window.srDesktop) {
+export async function readProjectDir(dirPath: string, rootPath = dirPath): Promise<HermesReadDirResult> {
+  if (!window.hermesDesktop) {
     return { entries: [], error: 'no-bridge' }
   }
 
   const result = await readDesktopDir(dirPath)
-  const entries = (result?.entries ?? []).filter(entry => !ALWAYS_EXCLUDED.has(entry.name))
+  const entries = result?.entries ?? []
 
   return { ...result, entries: await filterIgnored(entries, rootPath, dirPath) }
 }

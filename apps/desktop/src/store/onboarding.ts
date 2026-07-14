@@ -11,13 +11,14 @@ import {
   startOAuthLogin,
   submitOAuthCode,
   validateProviderCredential
-} from '@/sr'
+} from '@/hermes'
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
-import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/sr'
+import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
 
 type PkceStart = Extract<OAuthStartResponse, { flow: 'pkce' }>
 type DeviceStart = Extract<OAuthStartResponse, { flow: 'device_code' }>
+type LoopbackStart = Extract<OAuthStartResponse, { flow: 'loopback' }>
 
 export type OnboardingMode = 'apikey' | 'oauth'
 
@@ -26,6 +27,10 @@ export type OnboardingFlow =
   | { provider: OAuthProvider; status: 'starting' }
   | { code: string; provider: OAuthProvider; start: PkceStart; status: 'awaiting_user' }
   | { copied: boolean; provider: OAuthProvider; start: DeviceStart; status: 'polling' }
+  // Loopback PKCE (xAI Grok): browser opens, the local backend's 127.0.0.1
+  // listener catches the redirect, and we poll until the worker finishes.
+  // No code to paste and no user_code to show — just a waiting state.
+  | { provider: OAuthProvider; start: LoopbackStart; status: 'awaiting_browser' }
   | { provider: OAuthProvider; start: OAuthStartResponse; status: 'submitting' }
   | { copied: boolean; provider: OAuthProvider; status: 'external_pending' }
   | { provider: OAuthProvider; status: 'success' }
@@ -79,8 +84,8 @@ export interface OnboardingContext {
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
-const CONFIGURED_CACHE_KEY = 'sr-desktop-onboarded-v1'
-const SKIP_CACHE_KEY = 'sr-onboarding-skipped-v1'
+const CONFIGURED_CACHE_KEY = 'hermes-desktop-onboarded-v1'
+const SKIP_CACHE_KEY = 'hermes-onboarding-skipped-v1'
 const POLL_MS = 2000
 const COPY_FLASH_MS = 1500
 export const DEFAULT_ONBOARDING_REASON = 'No inference provider is configured.'
@@ -164,7 +169,8 @@ const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const patch = (update: Partial<DesktopOnboardingState>) =>
   $desktopOnboarding.set({ ...$desktopOnboarding.get(), ...update })
 
-const setFlow = (flow: OnboardingFlow) => patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
+const setFlow = (flow: OnboardingFlow) =>
+  patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
 
 const sessionIdFor = (flow: OnboardingFlow) => ('start' in flow && flow.start ? flow.start.session_id : undefined)
 
@@ -175,27 +181,19 @@ function clearPoll() {
   }
 }
 
-async function checkRuntime(ctx: OnboardingContext, requestedProvider?: string): Promise<RuntimeReadinessResult> {
+async function checkRuntime(ctx: OnboardingContext): Promise<RuntimeReadinessResult> {
   return evaluateRuntimeReadiness(ctx.requestGateway, {
     defaultReason: DEFAULT_ONBOARDING_REASON,
-    requestedProvider,
     unknownReady: false
   })
 }
 
-function shouldPreserveConfiguredOnFallback(runtime: RuntimeReadinessResult, state: DesktopOnboardingState): boolean {
-  // A fallback result means both runtime probes were non-authoritative
-  // (transport timeout/disconnect). Keep a previously verified configured
-  // state instead of forcing the blocking onboarding overlay.
-  return runtime.source === 'fallback' && state.configured === true && !state.requested
-}
-
 function notifyReady(provider: string) {
-  notify({ kind: 'success', title: 'SR is ready', message: `${provider} connected.` })
+  notify({ kind: 'success', title: 'Hermes is ready', message: `${provider} connected.` })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
-// mirroring sr_cli/nous_subscription._GATEWAY_TOOL_LABELS so the GUI and
+// mirroring hermes_cli/nous_subscription._GATEWAY_TOOL_LABELS so the GUI and
 // CLI describe the same thing.
 const GATEWAY_TOOL_LABELS: Record<string, string> = {
   browser: 'browser automation',
@@ -239,7 +237,7 @@ async function fetchProviderDefaultModel(
   let options
 
   try {
-    options = await getGlobalModelOptions({ includeUnconfigured: true, explicitOnly: false })
+    options = await getGlobalModelOptions()
   } catch {
     return null
   }
@@ -265,7 +263,7 @@ async function fetchProviderDefaultModel(
   }
 
   // Prefer the backend's recommended default — it mirrors the curation
-  // `sr model` does (for Nous it honors the user's free/paid tier, so a
+  // `hermes model` does (for Nous it honors the user's free/paid tier, so a
   // free user gets a free model rather than a paid default like opus). Fall
   // back to the first curated model if the endpoint can't resolve one.
   let defaultModel = String(models[0])
@@ -309,34 +307,15 @@ async function completeWithModelConfirm(
   ignoreRuntimeGate = false
 ) {
   await ctx.requestGateway('reload.env').catch(() => undefined)
-
-  const defaults = await fetchProviderDefaultModel(preferredSlugs)
-
-  if (defaults) {
-    // Persist the chosen provider/model before the runtime gate so a stale
-    // config provider (e.g. anthropic from a prior failed setup) cannot make
-    // setup.runtime_check validate the wrong backend after a fresh OAuth login.
-    try {
-      const res = await setModelAssignment({
-        scope: 'main',
-        provider: defaults.providerSlug,
-        model: defaults.defaultModel
-      })
-
-      notifyGatewayTools(res.gateway_tools)
-    } catch {
-      // Persistence failed — still run the scoped runtime check below and
-      // show the confirm card so the user can pick something explicitly.
-    }
-  }
-
-  const runtime = await checkRuntime(ctx, preferredSlugs[0])
+  const runtime = await checkRuntime(ctx)
 
   if (!runtime.ready && !ignoreRuntimeGate) {
     onFail(runtime.reason)
 
     return
   }
+
+  const defaults = await fetchProviderDefaultModel(preferredSlugs)
 
   if (!defaults) {
     // Couldn't get a sensible default — proceed without confirm step.
@@ -345,6 +324,27 @@ async function completeWithModelConfirm(
     ctx.onCompleted?.()
 
     return
+  }
+
+  // Persist the default model BEFORE showing the confirm card so that:
+  // (1) "current default: X" shown in the UI is what's actually written
+  //     to config — no lying.
+  // (2) If the user clicks "Start chatting" without changing anything,
+  //     no extra write is needed.
+  // (3) If they bail out (e.g., refresh the page), they still end up
+  //     with a working config, not an empty-model fallback.
+  try {
+    const res = await setModelAssignment({
+      scope: 'main',
+      provider: defaults.providerSlug,
+      model: defaults.defaultModel
+    })
+
+    notifyGatewayTools(res.gateway_tools)
+  } catch {
+    // Persistence failed — still show the confirm card so the user can
+    // pick something explicitly. The backend will pick its own default
+    // at chat time if we end up never persisting.
   }
 
   setFlow({
@@ -360,8 +360,8 @@ function providerResolutionFailure(reason: null | string) {
   const detail = reason?.trim()
 
   return detail
-    ? `Connected, but SR still cannot resolve a usable provider. ${detail}`
-    : 'Connected, but SR still cannot resolve a usable provider.'
+    ? `Connected, but Hermes still cannot resolve a usable provider. ${detail}`
+    : 'Connected, but Hermes still cannot resolve a usable provider.'
 }
 
 async function refreshProviders() {
@@ -515,23 +515,6 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
   }
 
   const state = $desktopOnboarding.get()
-
-  if (shouldPreserveConfiguredOnFallback(runtime, state)) {
-    // Gateway probes timed out but the user was already configured — don't
-    // downgrade to the blocking onboarding overlay. Surface a non-blocking
-    // notification with a stable id so repeated calls during an outage dedup
-    // instead of stacking toasts.
-    notify({
-      id: 'runtime-not-ready',
-      kind: 'error',
-      title: 'Runtime not ready',
-      message:
-        'SR Desktop could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
-    })
-
-    return false
-  }
-
   const reason = runtime.reason || state.reason || DEFAULT_ONBOARDING_REASON
 
   writeCachedConfigured(false)
@@ -551,9 +534,9 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
 // the flow never silently stalls in a waiting state. Mirrors the pattern in
 // apps/desktop/src/app/artifacts/index.tsx.
 async function openSignInUrl(url: string) {
-  if (window.srDesktop?.openExternal) {
+  if (window.hermesDesktop?.openExternal) {
     try {
-      await window.srDesktop.openExternal(url)
+      await window.hermesDesktop.openExternal(url)
 
       return
     } catch {
@@ -588,6 +571,15 @@ export async function startProviderOAuth(provider: OAuthProvider, ctx: Onboardin
       return
     }
 
+    if (start.flow === 'loopback') {
+      // No code to paste: the redirect lands on the backend's loopback
+      // listener. Just wait and poll the session until the worker finishes.
+      setFlow({ status: 'awaiting_browser', provider, start })
+      pollTimer = window.setInterval(() => void pollSession(provider, start, ctx), POLL_MS)
+
+      return
+    }
+
     setFlow({ status: 'polling', provider, start, copied: false })
     pollTimer = window.setInterval(() => void pollSession(provider, start, ctx), POLL_MS)
   } catch (error) {
@@ -595,8 +587,10 @@ export async function startProviderOAuth(provider: OAuthProvider, ctx: Onboardin
   }
 }
 
-// Poll a session-backed device-code flow until it resolves.
-async function pollSession(provider: OAuthProvider, start: DeviceStart, ctx: OnboardingContext) {
+// Poll a session-backed flow (device_code or loopback) until it resolves.
+// Both shapes only need the session_id to poll; the start is threaded
+// through to the error flow so the user can retry from the same context.
+async function pollSession(provider: OAuthProvider, start: DeviceStart | LoopbackStart, ctx: OnboardingContext) {
   try {
     const { error_message, status } = await pollOAuthSession(provider.id, start.session_id)
 
@@ -728,7 +722,7 @@ export async function recheckExternalSignin(ctx: OnboardingContext) {
       provider,
       message:
         reason?.trim() ||
-        `SR still cannot reach ${provider.name}. Run \`${provider.cli_command}\` in a terminal first.`
+        `Hermes still cannot reach ${provider.name}. Run \`${provider.cli_command}\` in a terminal first.`
     })
   )
 }
@@ -843,7 +837,7 @@ export async function saveOnboardingLocalEndpoint(baseUrl: string, apiKey: strin
     if (!runtime.ready) {
       const detail = (runtime.reason ?? '').trim()
 
-      return { ok: false, message: detail || `Saved, but SR still cannot reach ${url}.` }
+      return { ok: false, message: detail || `Saved, but Hermes still cannot reach ${url}.` }
     }
 
     notifyReady('Local / custom endpoint')

@@ -1,0 +1,12 @@
+name: corporate_office
+version: 1.0.0
+description: "Governed local PDF and Microsoft Office inspection, extraction, and approved edits."
+author: Hermes
+kind: backend
+platforms:
+  - windows
+provides_tools:
+  - document_inspect
+  - document_extract
+  - office_plan_changes
+  - office_apply_changes

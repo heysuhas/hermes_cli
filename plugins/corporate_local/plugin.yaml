@@ -1,0 +1,12 @@
+name: corporate_local
+version: 1.0.0
+description: "Corporate-local policy diagnostics, audit hooks, and Windows Firewall deployment."
+author: Hermes
+kind: backend
+platforms:
+  - windows
+provides_hooks:
+  - post_tool_call
+  - post_approval_response
+provides_tools:
+  - local_access_status

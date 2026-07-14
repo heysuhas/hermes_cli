@@ -26,7 +26,7 @@ export interface NativeNotificationPrefs {
   kinds: Record<NativeNotificationKind, boolean>
 }
 
-const STORAGE_KEY = 'sr:native-notifications'
+const STORAGE_KEY = 'hermes:native-notifications'
 
 const DEFAULT_PREFS: NativeNotificationPrefs = {
   enabled: true,
@@ -98,7 +98,7 @@ function throttled(key: string, now: number): boolean {
   return false
 }
 
-// "Backgrounded" = the user isn't on SR. `document.hidden` only flips when
+// "Backgrounded" = the user isn't on Hermes. `document.hidden` only flips when
 // minimized/occluded; an alt-tabbed window is visible-but-unfocused, so we also
 // check `document.hasFocus()`.
 function isBackgrounded(): boolean {
@@ -113,15 +113,7 @@ function isBackgrounded(): boolean {
   return typeof document.hasFocus === 'function' && !document.hasFocus()
 }
 
-function shouldFire(kind: NativeNotificationKind, sessionId?: null | string, global = false): boolean {
-  // Global notifications aren't tied to a chat session (e.g. pet generation,
-  // which runs from the command center with no active conversation). They fire
-  // whenever the user is away, with no session-match requirement — otherwise a
-  // background run started without an open session would be silently dropped.
-  if (global) {
-    return isBackgrounded()
-  }
-
+function shouldFire(kind: NativeNotificationKind, sessionId?: null | string): boolean {
   // Attention kinds break through for an off-screen session even while focused.
   if (ATTENTION_KINDS.has(kind)) {
     return isBackgrounded() || (Boolean(sessionId) && sessionId !== $activeSessionId.get())
@@ -142,12 +134,6 @@ export interface NativeNotificationInput {
   title: string
   body?: string
   sessionId?: null | string
-  /**
-   * Not tied to a chat session (e.g. pet generation). Fires whenever the user
-   * is away, bypassing the session-match gate that completion kinds normally
-   * require.
-   */
-  global?: boolean
   silent?: boolean
   actions?: NativeNotificationAction[]
 }
@@ -159,15 +145,15 @@ export function dispatchNativeNotification(input: NativeNotificationInput): void
     return
   }
 
-  if (!shouldFire(input.kind, input.sessionId, input.global)) {
+  if (!shouldFire(input.kind, input.sessionId)) {
     return
   }
 
-  if (throttled(`${input.kind}:${input.sessionId ?? (input.global ? 'global' : '')}`, Date.now())) {
+  if (throttled(`${input.kind}:${input.sessionId ?? ''}`, Date.now())) {
     return
   }
 
-  void window.srDesktop?.notify({
+  void window.hermesDesktop?.notify({
     actions: input.actions,
     body: input.body,
     kind: input.kind,
@@ -203,7 +189,7 @@ export async function respondToApprovalAction(sessionId: null | string, actionId
 // Settings "send test" — bypasses gating. Returns whether the OS accepted it so
 // the panel can flag a silent permission failure instead of looking dead.
 export async function sendTestNativeNotification(title: string, body: string): Promise<boolean> {
-  const bridge = window.srDesktop
+  const bridge = window.hermesDesktop
 
   if (!bridge?.notify) {
     return false

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { getActionStatus, getComputerUseStatus, grantComputerUsePermissions } from '@/sr'
+import { getActionStatus, getComputerUseStatus, grantComputerUsePermissions } from '@/hermes'
 import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, X } from '@/lib/icons'
 import { upsertDesktopActionTask } from '@/store/activity'
 import { notify, notifyError } from '@/store/notifications'
-import type { ComputerUseStatus } from '@/types/sr'
+import type { ComputerUseStatus } from '@/types/hermes'
 
 import { Pill } from './primitives'
 
@@ -52,7 +52,7 @@ function PermissionRow({ granted, label, hint }: { granted: boolean | null; labe
  *
  * cua-driver runs on macOS, Windows, and Linux, but readiness differs: macOS
  * needs two TCC grants (Accessibility + Screen Recording) that attach to
- * cua-driver's own `com.trycua.driver` identity — not SR — and are
+ * cua-driver's own `com.trycua.driver` identity — not Hermes — and are
  * requested via `cua-driver permissions grant` (dialog attributed to
  * CuaDriver). Windows/Linux have no TCC toggles, so readiness is driver health
  * from `cua-driver doctor`. The backend folds both into one `ready` signal.
@@ -134,7 +134,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+      <div className="mt-3 flex items-center gap-2 px-1 text-xs text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" />
         Checking Computer Use status…
       </div>
@@ -147,7 +147,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
 
   if (!status.platform_supported) {
     return (
-      <p className="px-1 text-xs text-muted-foreground">
+      <p className="mt-3 px-1 text-xs text-muted-foreground">
         Computer Use isn&apos;t supported on this platform ({status.platform}).
       </p>
     )
@@ -155,7 +155,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
 
   if (!status.installed) {
     return (
-      <p className="px-1 text-xs text-muted-foreground">
+      <p className="mt-3 px-1 text-xs text-muted-foreground">
         Install the cua-driver backend below to drive this machine.
         {status.can_grant && ' Then grant Accessibility and Screen Recording here.'}
       </p>
@@ -165,12 +165,12 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
   const failingChecks = status.checks.filter(c => c.status !== 'ok')
 
   return (
-    <div className="grid gap-2">
+    <div className="mt-3 grid gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <div className="min-w-0">
           {status.can_grant ? (
             <p className="text-[0.72rem] text-muted-foreground">
-              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not SR — so the dialog is
+              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not Hermes — so the dialog is
               attributed to the process that drives your Mac.
             </p>
           ) : (

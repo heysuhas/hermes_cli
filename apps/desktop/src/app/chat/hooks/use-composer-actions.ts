@@ -5,8 +5,6 @@ import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
-import { readDesktopFileDataUrl, selectDesktopPaths } from '@/lib/desktop-fs'
-import { normalize } from '@/lib/text'
 import {
   addComposerAttachment,
   type ComposerAttachment,
@@ -31,36 +29,13 @@ const BLOB_MIME_EXTENSION: Record<string, string> = {
 }
 
 function blobExtension(blob: Blob): string {
-  const mime = normalize(blob.type.split(';')[0])
+  const mime = blob.type.split(';')[0]?.trim().toLowerCase()
 
-  return BLOB_MIME_EXTENSION[mime] || '.png'
+  return (mime && BLOB_MIME_EXTENSION[mime]) || '.png'
 }
 
 export function isImagePath(filePath: string): boolean {
   return IMAGE_EXTENSION_PATTERN.test(filePath)
-}
-
-/**
- * Read an attachment's thumbnail preview, local disk first. Paperclip picks,
- * clipboard saves, and OS drops always hand us paths on THIS machine — the
- * remote-routed fs facade would 404 them against the gateway and toast a bogus
- * "preview failed" even though the attach itself works (upload reads local
- * bytes too). In-app drags from the remote project tree are the opposite case:
- * the local read fails there, so fall back to the facade (remote fs bridge).
- * In local mode the facade IS the local bridge, so this stays a single read.
- */
-export async function attachmentPreviewDataUrl(filePath: string): Promise<string> {
-  try {
-    const local = await window.srDesktop?.readFileDataUrl?.(filePath)
-
-    if (local) {
-      return local
-    }
-  } catch {
-    // Not on this machine (or unreadable locally) — try the gateway.
-  }
-
-  return readDesktopFileDataUrl(filePath)
 }
 
 export interface DroppedFile {
@@ -68,8 +43,7 @@ export interface DroppedFile {
   file?: File
   /** Absolute filesystem path. Empty when an OS drop didn't carry one. */
   path: string
-  /** True if the entry is a directory. Set by in-app drags, and by OS drops via
-   * DataTransferItem.webkitGetAsEntry(). */
+  /** True if the entry is a directory. Currently only set by in-app drags. */
   isDirectory?: boolean
   /** First line number for in-app line-ref drags (source view gutter). */
   line?: number
@@ -79,11 +53,11 @@ export interface DroppedFile {
 
 /** MIME emitted by in-app drag sources (project tree, gutter line numbers).
  * Payload is JSON `{ path; isDirectory?; line?; lineEnd? }[]`. */
-export const SR_PATHS_MIME = 'application/x-sr-paths'
+export const HERMES_PATHS_MIME = 'application/x-hermes-paths'
 
 /**
  * Eagerly resolve files from a drop event into [File?, path, isDirectory?]
- * triples. Internal SR sources (e.g. the project tree) ride on a custom
+ * triples. Internal Hermes sources (e.g. the project tree) ride on a custom
  * MIME and produce path-only entries; OS drops produce File-bearing entries.
  *
  * Must be called synchronously from inside the drop handler — `DataTransfer`
@@ -94,12 +68,12 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
   const result: DroppedFile[] = []
   const seenPaths = new Set<string>()
   const seenFiles = new Set<File>()
-  const getPath = window.srDesktop?.getPathForFile
+  const getPath = window.hermesDesktop?.getPathForFile
 
   // In-app drags first — they carry richer metadata (isDirectory) than the
   // File-based fallback can provide, and produce no overlapping native files.
   try {
-    const internalRaw = transfer.getData(SR_PATHS_MIME)
+    const internalRaw = transfer.getData(HERMES_PATHS_MIME)
 
     if (internalRaw) {
       const parsed = JSON.parse(internalRaw) as {
@@ -133,50 +107,39 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
     // Malformed payload — fall through to native files.
   }
 
-  // Add a native OS-drop entry. A dropped directory has no byte content to
-  // upload, so it's emitted as a path-only entry with `isDirectory: true` —
-  // that routes it to a `@folder:` ref / folder attachment (like the folder
-  // picker) instead of the file-upload pipeline, which can't stage a directory
-  // (the gateway can't read its bytes and there's no data_url to send).
-  const pushNativeEntry = (file: File, isDirectory: boolean) => {
-    if (seenFiles.has(file)) {
-      return
-    }
+  const fileList = transfer.files
 
-    seenFiles.add(file)
-    let path = ''
+  if (fileList) {
+    for (let i = 0; i < fileList.length; i += 1) {
+      const file = fileList.item(i)
 
-    if (getPath) {
-      try {
-        path = getPath(file) || ''
-      } catch {
-        path = ''
+      if (!file || seenFiles.has(file)) {
+        continue
       }
-    }
 
-    if (path && seenPaths.has(path)) {
-      return
-    }
+      seenFiles.add(file)
+      let path = ''
 
-    if (path) {
-      seenPaths.add(path)
-    }
+      if (getPath) {
+        try {
+          path = getPath(file) || ''
+        } catch {
+          path = ''
+        }
+      }
 
-    if (isDirectory) {
+      if (path && seenPaths.has(path)) {
+        continue
+      }
+
       if (path) {
-        result.push({ isDirectory: true, path })
+        seenPaths.add(path)
       }
 
-      return
+      result.push({ file, path })
     }
-
-    result.push({ file, path })
   }
 
-  // Process items first: DataTransferItem.webkitGetAsEntry() is the only
-  // synchronous way to tell a dropped folder from a file, and it lives only on
-  // items (not transfer.files). Must be read here, inside the drop handler,
-  // before the DataTransfer detaches.
   const items = transfer.items
 
   if (items) {
@@ -187,39 +150,32 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
         continue
       }
 
-      let isDirectory = false
-
-      try {
-        const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
-        isDirectory = entry?.isDirectory === true
-      } catch {
-        isDirectory = false
-      }
-
       const file = item.getAsFile()
 
-      if (!file) {
+      if (!file || seenFiles.has(file)) {
         continue
       }
 
-      pushNativeEntry(file, isDirectory)
-    }
-  }
+      seenFiles.add(file)
+      let path = ''
 
-  // Fallback for environments that populate transfer.files but not items.
-  // webkitGetAsEntry isn't available on this path, so directory detection
-  // relies on the items pass above; anything reaching here is treated as a file.
-  const fileList = transfer.files
+      if (getPath) {
+        try {
+          path = getPath(file) || ''
+        } catch {
+          path = ''
+        }
+      }
 
-  if (fileList) {
-    for (let i = 0; i < fileList.length; i += 1) {
-      const file = fileList.item(i)
-
-      if (!file) {
+      if (path && seenPaths.has(path)) {
         continue
       }
 
-      pushNativeEntry(file, false)
+      if (path) {
+        seenPaths.add(path)
+      }
+
+      result.push({ file, path })
     }
   }
 
@@ -270,10 +226,9 @@ const attachToMain = (attachment: ComposerAttachment) => {
 export function useComposerActions({ activeSessionId, currentCwd, requestGateway }: ComposerActionsOptions) {
   const { t } = useI18n()
   const copy = t.desktop
-
   const addTextToDraft = useCallback((text: string) => {
     requestComposerInsert(text, { mode: 'block' })
-  }, [])
+  }, [copy.imagePreviewFailed])
 
   const addTerminalSelectionAttachment = useCallback((text: string, label = 'selection') => {
     const trimmed = text.trim()
@@ -306,7 +261,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
 
   const pickContextPaths = useCallback(
     async (kind: 'file' | 'folder') => {
-      const paths = await selectDesktopPaths({
+      const paths = await window.hermesDesktop?.selectPaths({
         title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
         defaultPath: currentCwd || undefined,
         directories: kind === 'folder'
@@ -374,38 +329,35 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
     [currentCwd]
   )
 
-  const attachImagePath = useCallback(
-    async (filePath: string) => {
-      if (!filePath) {
-        return false
+  const attachImagePath = useCallback(async (filePath: string) => {
+    if (!filePath) {
+      return false
+    }
+
+    const baseAttachment: ComposerAttachment = {
+      id: attachmentId('image', filePath),
+      kind: 'image',
+      label: pathLabel(filePath),
+      detail: filePath,
+      path: filePath
+    }
+
+    attachToMain(baseAttachment)
+
+    try {
+      const previewUrl = await window.hermesDesktop?.readFileDataUrl(filePath)
+
+      if (previewUrl) {
+        addComposerAttachment({ ...baseAttachment, previewUrl })
       }
 
-      const baseAttachment: ComposerAttachment = {
-        id: attachmentId('image', filePath),
-        kind: 'image',
-        label: pathLabel(filePath),
-        detail: filePath,
-        path: filePath
-      }
+      return true
+    } catch (err) {
+      notifyError(err, copy.imagePreviewFailed)
 
-      attachToMain(baseAttachment)
-
-      try {
-        const previewUrl = await attachmentPreviewDataUrl(filePath)
-
-        if (previewUrl) {
-          addComposerAttachment({ ...baseAttachment, previewUrl })
-        }
-
-        return true
-      } catch (err) {
-        notifyError(err, copy.imagePreviewFailed)
-
-        return true
-      }
-    },
-    [copy.imagePreviewFailed]
-  )
+      return true
+    }
+  }, [])
 
   const attachImageBlob = useCallback(
     async (blob: Blob) => {
@@ -420,7 +372,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
       try {
         const buffer = await blob.arrayBuffer()
         const data = new Uint8Array(buffer)
-        const savedPath = await window.srDesktop?.saveImageBuffer(data, blobExtension(blob))
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob))
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })
@@ -439,7 +391,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
   )
 
   const pickImages = useCallback(async () => {
-    const paths = await selectDesktopPaths({
+    const paths = await window.hermesDesktop?.selectPaths({
       title: copy.attachImages,
       defaultPath: currentCwd || undefined,
       filters: [
@@ -459,36 +411,25 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
     }
   }, [attachImagePath, copy.attachImages, currentCwd, t.composer.images])
 
-  const pasteClipboardImage = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      try {
-        const path = await window.srDesktop?.saveClipboardImage()
+  const pasteClipboardImage = useCallback(async () => {
+    try {
+      const path = await window.hermesDesktop?.saveClipboardImage()
 
-        if (!path) {
-          if (!silent) {
-            notify({
-              kind: 'warning',
-              title: copy.clipboard,
-              message: copy.noClipboardImage
-            })
-          }
+      if (!path) {
+        notify({
+          kind: 'warning',
+          title: copy.clipboard,
+          message: copy.noClipboardImage
+        })
 
-          return false
-        }
-
-        await attachImagePath(path)
-
-        return true
-      } catch (err) {
-        if (!silent) {
-          notifyError(err, copy.clipboardPasteFailed)
-        }
-
-        return false
+        return
       }
-    },
-    [attachImagePath, copy.clipboard, copy.clipboardPasteFailed, copy.noClipboardImage]
-  )
+
+      await attachImagePath(path)
+    } catch (err) {
+      notifyError(err, copy.clipboardPasteFailed)
+    }
+  }, [attachImagePath, copy.clipboard, copy.clipboardPasteFailed, copy.noClipboardImage])
 
   const attachContextFolderPath = useCallback(
     (folderPath: string) => {
@@ -562,7 +503,7 @@ export function useComposerActions({ activeSessionId, currentCwd, requestGateway
         }
 
         const fallbackPath =
-          !knownPath && window.srDesktop?.getPathForFile ? window.srDesktop.getPathForFile(file) : ''
+          !knownPath && window.hermesDesktop?.getPathForFile ? window.hermesDesktop.getPathForFile(file) : ''
 
         const filePath = knownPath || fallbackPath || ''
         const isImage = file.type.startsWith('image/') || isImagePath(file.name) || (filePath && isImagePath(filePath))

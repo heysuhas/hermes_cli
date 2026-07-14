@@ -26,7 +26,7 @@ import { codiconForLanguage, isLikelyProseCodeBlock, sanitizeLanguageTag } from 
  * `react-shiki` full bundle so all `bundledLanguages` work; theme switches
  * follow the document `color-scheme` via `defaultColor="light-dark()"`.
  */
-interface SRSyntaxHighlighterProps extends SyntaxHighlighterProps {
+interface HermesSyntaxHighlighterProps extends SyntaxHighlighterProps {
   defer?: boolean
 }
 
@@ -115,7 +115,7 @@ const PlainCode: FC<{ code: string }> = ({ code }) => {
   )
 }
 
-export const SyntaxHighlighter: FC<SRSyntaxHighlighterProps> = ({
+export const SyntaxHighlighter: FC<HermesSyntaxHighlighterProps> = ({
   components: { Pre },
   language,
   code,

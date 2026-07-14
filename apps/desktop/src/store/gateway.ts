@@ -1,7 +1,8 @@
-import { type ConnectionState, type GatewayEvent, resolveGatewayWsUrl } from '@sr/shared'
+import type { ConnectionState, GatewayEvent } from '@hermes/shared'
 import { atom } from 'nanostores'
 
-import { SRGateway } from '@/sr'
+import { HermesGateway } from '@/hermes'
+import { resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
 import { setGatewayState } from '@/store/session'
 
 // ── Multi-profile gateway routing ──────────────────────────────────────────
@@ -18,12 +19,12 @@ const normKey = (profile: string | null | undefined): string => (profile ?? '').
 
 // Read connection state through a call so TS control-flow analysis doesn't
 // narrow the getter to a constant across guards (it genuinely changes).
-const isOpen = (gateway: SRGateway | null): boolean => gateway?.connectionState === 'open'
+const isOpen = (gateway: HermesGateway | null): boolean => gateway?.connectionState === 'open'
 
 // The active gateway instance, exposed for inline message-stream components
 // (e.g. inline ClarifyTool, model overlays) that call gateway methods without
 // the instance threaded down through props.
-export const $gateway = atom<SRGateway | null>(null)
+export const $gateway = atom<HermesGateway | null>(null)
 
 interface RegistryConfig {
   onEvent: (event: GatewayEvent) => void
@@ -36,10 +37,10 @@ export function configureGatewayRegistry(cfg: RegistryConfig): void {
 }
 
 // ── Primary (window) backend ───────────────────────────────────────────────
-let primaryGateway: SRGateway | null = null
+let primaryGateway: HermesGateway | null = null
 let primaryProfile = 'default'
 
-export function setPrimaryGateway(gateway: SRGateway | null, profile = 'default'): void {
+export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'default'): void {
   primaryGateway = gateway
   primaryProfile = normKey(profile)
 }
@@ -47,7 +48,7 @@ export function setPrimaryGateway(gateway: SRGateway | null, profile = 'default'
 // ── Secondary (pool) backends ──────────────────────────────────────────────
 interface Secondary {
   profile: string
-  gateway: SRGateway
+  gateway: HermesGateway
   offEvent: () => void
   offState: () => void
   reconnectTimer: ReturnType<typeof setTimeout> | null
@@ -66,7 +67,7 @@ export function isActivePrimary(): boolean {
   return activeKey === primaryProfile
 }
 
-export function activeGateway(): SRGateway | null {
+export function activeGateway(): HermesGateway | null {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }
@@ -103,7 +104,7 @@ function clearTimer(entry: Secondary): void {
 }
 
 async function openSecondary(entry: Secondary): Promise<void> {
-  const desktop = window.srDesktop
+  const desktop = window.hermesDesktop
 
   if (!desktop) {
     return
@@ -151,7 +152,7 @@ async function reconnectSecondary(entry: Secondary): Promise<void> {
 }
 
 function createSecondary(profile: string): Secondary {
-  const gateway = new SRGateway()
+  const gateway = new HermesGateway()
 
   const entry: Secondary = {
     profile,
@@ -216,7 +217,7 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
 
 // Reconnect the active gateway after a transient request failure. Primary
 // reconnects are owned by use-gateway-boot, so we only drive secondaries here.
-export async function ensureActiveGatewayOpen(): Promise<SRGateway | null> {
+export async function ensureActiveGatewayOpen(): Promise<HermesGateway | null> {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }
@@ -250,7 +251,7 @@ export function reconnectSecondaryGateways(): void {
 // Keep the idle reaper from killing a backend we still need: ping every live
 // secondary. The active one is pinged separately (touchActiveGatewayBackend).
 export function touchSecondaryGateways(): void {
-  const desktop = window.srDesktop
+  const desktop = window.hermesDesktop
 
   for (const entry of secondaries.values()) {
     if (entry.wantOpen) {

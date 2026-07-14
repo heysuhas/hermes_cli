@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatRefValue, srDirectiveFormatter } from './directive-text'
+import { formatRefValue, hermesDirectiveFormatter } from './directive-text'
 
 describe('formatRefValue', () => {
   it('leaves simple paths untouched', () => {
@@ -17,9 +17,9 @@ describe('formatRefValue', () => {
   })
 })
 
-describe('srDirectiveFormatter.parse', () => {
+describe('hermesDirectiveFormatter.parse', () => {
   it('keeps quoted file paths whole when parsing', () => {
-    const segments = srDirectiveFormatter.parse('see @image:`apple-touch-icon (1).png` for the icon')
+    const segments = hermesDirectiveFormatter.parse('see @image:`apple-touch-icon (1).png` for the icon')
 
     expect(segments).toEqual([
       { kind: 'text', text: 'see ' },
@@ -29,7 +29,7 @@ describe('srDirectiveFormatter.parse', () => {
   })
 
   it('still parses unquoted paths', () => {
-    const segments = srDirectiveFormatter.parse('@file:src/main.tsx the entry point')
+    const segments = hermesDirectiveFormatter.parse('@file:src/main.tsx the entry point')
 
     expect(segments).toEqual([
       { kind: 'mention', type: 'file', label: 'main.tsx', id: 'src/main.tsx' },

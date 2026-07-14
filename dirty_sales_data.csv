@@ -1,0 +1,9 @@
+date,customer_name,Product,amount,status,notes
+2026/05/23,john smith,Laptop,"$1,200.50",Delivered,Urgent
+12-11-2025,MARY JANE,Headphones,450,pending,
+12-11-2025,MARY JANE,Headphones,450,pending,
+25-Dec-2025,Alice Cooper,Keyboard,75.00,Delivered,Gift wrap
+2026.04.12,  bob johnson  ,Monitor,$350,,Needs call
+Invalid Date,Charlie Brown,Mouse,25,Refunded,
+2026-06-01,david miller,Laptop,"$1,200.50",Delivered,
+,sarah connor,Tablet, 500 ,Shipped,

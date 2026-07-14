@@ -1,18 +1,14 @@
-import { normalize } from '@/lib/text'
-
 const REASONING_LABELS: Record<string, string> = {
   none: 'Off',
   minimal: 'Min',
   low: 'Low',
   medium: 'Med',
   high: 'High',
-  xhigh: 'XHigh',
-  max: 'Max',
-  ultra: 'Ultra'
+  xhigh: 'Max'
 }
 
 export function reasoningEffortLabel(effort: string): string {
-  const key = normalize(effort)
+  const key = effort.trim().toLowerCase()
 
   if (!key) {
     return ''
@@ -118,7 +114,7 @@ export function formatModelStatusLabel(
     parts.push('Fast')
   }
 
-  // Always surface the effort (empty = SR default of medium) so the
+  // Always surface the effort (empty = Hermes default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
   parts.push(reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
 

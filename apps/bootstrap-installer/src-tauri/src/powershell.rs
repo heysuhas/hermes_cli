@@ -1,6 +1,6 @@
 //! Drives PowerShell (Windows) or bash (Unix) for install.ps1 / install.sh.
 //!
-//! Port of `spawnPowerShell` from bootstrap-runner.ts, with the same
+//! Port of `spawnPowerShell` from bootstrap-runner.cjs, with the same
 //! line-buffered stdout/stderr streaming + cancellation semantics.
 //!
 //! On Windows we pass `-NoProfile -ExecutionPolicy Bypass -File <script>`.
@@ -19,7 +19,7 @@ pub struct StreamSink {
     pub on_stderr_line: Box<dyn Fn(&str) + Send + Sync>,
 }
 
-/// Outcome of a script invocation. Mirrors bootstrap-runner.ts's
+/// Outcome of a script invocation. Mirrors bootstrap-runner.cjs's
 /// `{stdout, stderr, code, signal, killed}` shape.
 #[derive(Debug)]
 pub struct ScriptResult {
@@ -34,13 +34,13 @@ pub type CancelRx = mpsc::Receiver<()>;
 
 /// Spawns install.ps1 / install.sh with the given args and streams output.
 ///
-/// `sr_home_override` propagates to the child as $SR_HOME so the
+/// `hermes_home_override` propagates to the child as $HERMES_HOME so the
 /// install script writes to the same directory the installer is reading from.
 pub async fn run_script(
     script_path: &Path,
     args: &[String],
     sink: StreamSink,
-    sr_home_override: Option<&str>,
+    hermes_home_override: Option<&str>,
     mut cancel_rx: Option<CancelRx>,
 ) -> Result<ScriptResult> {
     let mut cmd = build_command(script_path, args);
@@ -49,12 +49,12 @@ pub async fn run_script(
     // during self-update. Pin child scripts to a stable directory so bash/zsh
     // never starts from a deleted cwd and emits getcwd/job-working-directory
     // errors at the end of an otherwise successful install.
-    if let Some(cwd) = stable_script_cwd(script_path, sr_home_override) {
+    if let Some(cwd) = stable_script_cwd(script_path, hermes_home_override) {
         cmd.current_dir(cwd);
     }
 
-    if let Some(home) = sr_home_override {
-        cmd.env("SR_HOME", home);
+    if let Some(home) = hermes_home_override {
+        cmd.env("HERMES_HOME", home);
     }
 
     cmd.stdin(Stdio::null())
@@ -154,8 +154,8 @@ pub async fn run_script(
     })
 }
 
-fn stable_script_cwd<'a>(script_path: &'a Path, sr_home_override: Option<&'a str>) -> Option<&'a Path> {
-    if let Some(home) = sr_home_override {
+fn stable_script_cwd<'a>(script_path: &'a Path, hermes_home_override: Option<&'a str>) -> Option<&'a Path> {
+    if let Some(home) = hermes_home_override {
         let path = Path::new(home);
         if path.is_dir() {
             return Some(path);
@@ -258,7 +258,7 @@ fn interpreter_label() -> String {
 /// Parses the LAST line of stdout that looks like a JSON object matching
 /// the install.ps1 stage-result contract: `{ok: bool, stage: string, ...}`.
 ///
-/// Mirrors `parseStageResult` from bootstrap-runner.ts. install.ps1 may
+/// Mirrors `parseStageResult` from bootstrap-runner.cjs. install.ps1 may
 /// print info/banner lines before the result frame; we scan from the end.
 pub fn parse_stage_result(stdout: &str) -> Option<crate::events::StageResultPayload> {
     for line in stdout.lines().rev() {
@@ -339,7 +339,7 @@ info line
     }
 
     #[test]
-    fn stable_script_cwd_prefers_existing_sr_home() {
+    fn stable_script_cwd_prefers_existing_hermes_home() {
         let script = Path::new("/tmp/install.sh");
         let cwd = stable_script_cwd(script, Some("/"));
         assert_eq!(cwd, Some(Path::new("/")));

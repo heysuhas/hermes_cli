@@ -1,11 +1,17 @@
 import { type QueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
-import { getGlobalModelInfo } from '@/sr'
+import { getGlobalModelInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
-import { $activeSessionId, $currentModel, $currentProvider, setCurrentModel, setCurrentProvider } from '@/store/session'
-import type { ModelOptionsResponse } from '@/types/sr'
+import {
+  $activeSessionId,
+  $currentModel,
+  $currentProvider,
+  setCurrentModel,
+  setCurrentProvider
+} from '@/store/session'
+import type { ModelOptionsResponse } from '@/types/hermes'
 
 interface ModelSelection {
   model: string
@@ -96,7 +102,7 @@ export function useModelControls({ activeSessionId, queryClient, requestGateway 
         await requestGateway('config.set', {
           session_id: activeSessionId,
           key: 'model',
-          value: `${selection.model} --provider ${selection.provider} --session`
+          value: `${selection.model} --provider ${selection.provider}`
         })
 
         void queryClient.invalidateQueries({ queryKey: ['model-options', activeSessionId] })

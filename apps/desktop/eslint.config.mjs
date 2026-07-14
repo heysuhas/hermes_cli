@@ -105,12 +105,12 @@ export default [
     }
   },
   {
-    files: ['**/*.js', '**/*.cjs', '**/*.mjs'],
+    files: ['**/*.js', '**/*.cjs'],
     ignores: ['**/node_modules/**', '**/dist/**'],
     languageOptions: {
       ecmaVersion: 'latest',
       globals: { ...globals.node },
-      sourceType: 'module'
+      sourceType: 'commonjs'
     }
   },
   {

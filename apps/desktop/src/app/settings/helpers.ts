@@ -1,11 +1,12 @@
-import { asText } from '@/lib/text'
-import type { SRConfigRecord, ToolsetInfo } from '@/types/sr'
+import type { HermesConfigRecord, ToolsetInfo } from '@/types/hermes'
 
 import { BUILTIN_PERSONALITIES, ENUM_OPTIONS, PROVIDER_GROUPS } from './constants'
 
-// Canonical implementations live in @/lib/text; re-exported here so the many
-// settings/capabilities call sites keep their import path.
-export { asText, includesQuery, prettyName } from '@/lib/text'
+export const asText = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v))
+
+export const includesQuery = (v: unknown, q: string) => asText(v).toLowerCase().includes(q)
+
+export const prettyName = (v: string) => v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
 /** Strip leading emoji from toolset titles (CLI registry prefixes labels with icons). */
 export const stripToolsetLabel = (label: string): string =>
@@ -79,7 +80,7 @@ function safeSet(target: Record<string, unknown>, key: string, value: unknown): 
   })
 }
 
-export function getNested(obj: SRConfigRecord, path: string): unknown {
+export function getNested(obj: HermesConfigRecord, path: string): unknown {
   let cur: unknown = obj
 
   for (const part of configPathParts(path)) {
@@ -97,7 +98,7 @@ export function getNested(obj: SRConfigRecord, path: string): unknown {
   return cur
 }
 
-export function setNested(obj: SRConfigRecord, path: string, value: unknown): SRConfigRecord {
+export function setNested(obj: HermesConfigRecord, path: string, value: unknown): HermesConfigRecord {
   const clone = structuredClone(obj)
   const parts = configPathParts(path)
   let cur: Record<string, unknown> = clone
@@ -123,7 +124,7 @@ export function setNested(obj: SRConfigRecord, path: string, value: unknown): SR
   return clone
 }
 
-function personalityOptions(config: SRConfigRecord): string[] {
+function personalityOptions(config: HermesConfigRecord): string[] {
   const custom = getNested(config, 'agent.personalities')
 
   const customNames =
@@ -135,7 +136,7 @@ function personalityOptions(config: SRConfigRecord): string[] {
 export function enumOptionsFor(
   key: string,
   value: unknown,
-  config: SRConfigRecord,
+  config: HermesConfigRecord,
   dynamicOptions?: string[]
 ): string[] | undefined {
   const opts = dynamicOptions ?? (key === 'display.personality' ? personalityOptions(config) : ENUM_OPTIONS[key])

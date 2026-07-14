@@ -13,7 +13,7 @@ import {
   setPreviewTarget
 } from '@/store/preview'
 import { $currentCwd } from '@/store/session'
-import type { RpcEvent } from '@/types/sr'
+import type { RpcEvent } from '@/types/hermes'
 
 type EventHandler = (event: RpcEvent) => void
 

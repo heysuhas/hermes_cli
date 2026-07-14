@@ -1,0 +1,14 @@
+name: outlook
+version: 1.0.0
+description: "Provider-neutral desktop mail tools backed by classic Outlook COM on Windows. Lists folders/messages, reads mail, and creates or updates drafts without sending."
+author: NousResearch
+kind: backend
+platforms:
+  - windows
+provides_tools:
+  - mail_client_status
+  - mail_list_folders
+  - mail_list_messages
+  - mail_get_message
+  - mail_create_draft
+  - mail_update_draft

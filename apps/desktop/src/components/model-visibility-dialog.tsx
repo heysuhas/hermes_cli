@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Switch } from '@/components/ui/switch'
-import type { SRGateway } from '@/sr'
-import { getGlobalModelOptions } from '@/sr'
+import type { HermesGateway } from '@/hermes'
+import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
-import { normalize } from '@/lib/text'
 import {
   $visibleModels,
   collapseModelFamilies,
@@ -19,10 +18,10 @@ import {
   setVisibleModels,
   toggleModelVisibility
 } from '@/store/model-visibility'
-import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/sr'
+import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 interface ModelVisibilityDialogProps {
-  gw?: SRGateway
+  gw?: HermesGateway
   onOpenChange: (open: boolean) => void
   onOpenProviders: () => void
   open: boolean
@@ -45,10 +44,7 @@ export function ModelVisibilityDialog({
     queryKey: ['model-options', sessionId || 'global'],
     queryFn: (): Promise<ModelOptionsResponse> => {
       if (gw && sessionId) {
-        return gw.request<ModelOptionsResponse>('model.options', {
-          session_id: sessionId,
-          explicit_only: true
-        })
+        return gw.request<ModelOptionsResponse>('model.options', { session_id: sessionId })
       }
 
       return getGlobalModelOptions()
@@ -67,7 +63,7 @@ export function ModelVisibilityDialog({
     setVisibleModels(toggleModelVisibility($visibleModels.get(), providers, provider.slug, model))
   }
 
-  const q = normalize(search)
+  const q = search.trim().toLowerCase()
 
   const matches = (provider: ModelOptionProvider, model: string) =>
     !q || `${model} ${provider.name} ${provider.slug} ${displayModelName(model)}`.toLowerCase().includes(q)

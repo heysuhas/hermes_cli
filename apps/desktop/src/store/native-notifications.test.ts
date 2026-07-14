@@ -12,8 +12,8 @@ import {
 import { $approvalRequest, setApprovalRequest } from './prompts'
 import { $activeSessionId, setActiveSessionId } from './session'
 
-const desktopWindow = window as unknown as { srDesktop?: Window['srDesktop'] }
-const initialSRDesktop = desktopWindow.srDesktop
+const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
+const initialHermesDesktop = desktopWindow.hermesDesktop
 
 const notify = vi.fn().mockResolvedValue(true)
 
@@ -34,7 +34,7 @@ function freshSession(): string {
 
 beforeEach(() => {
   notify.mockClear()
-  desktopWindow.srDesktop = { notify } as unknown as Window['srDesktop']
+  desktopWindow.hermesDesktop = { notify } as unknown as Window['hermesDesktop']
   setNativeNotifyEnabled(true)
 
   for (const kind of NATIVE_NOTIFICATION_KINDS) {
@@ -46,10 +46,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (initialSRDesktop) {
-    desktopWindow.srDesktop = initialSRDesktop
+  if (initialHermesDesktop) {
+    desktopWindow.hermesDesktop = initialHermesDesktop
   } else {
-    delete desktopWindow.srDesktop
+    delete desktopWindow.hermesDesktop
   }
 })
 
@@ -96,19 +96,6 @@ describe('dispatchNativeNotification focus gating', () => {
     dispatchNativeNotification({ kind: 'approval', sessionId: 'on-screen', title: 'approve' })
     expect(notify).not.toHaveBeenCalled()
   })
-
-  it('fires a global completion notification while away with no active session (pet gen)', () => {
-    setActiveSessionId(null)
-    dispatchNativeNotification({ global: true, kind: 'backgroundDone', title: 'Your pet hatched' })
-    expect(notify).toHaveBeenCalledTimes(1)
-  })
-
-  it('suppresses a global notification when the window is focused', () => {
-    setWindowState({ focused: true, hidden: false })
-    setActiveSessionId(null)
-    dispatchNativeNotification({ global: true, kind: 'backgroundDone', title: 'Your pet hatched' })
-    expect(notify).not.toHaveBeenCalled()
-  })
 })
 
 describe('dispatchNativeNotification preferences', () => {
@@ -153,7 +140,7 @@ describe('sendTestNativeNotification', () => {
   it('fires regardless of focus or active session', () => {
     setWindowState({ focused: true, hidden: false })
     setActiveSessionId('on-screen')
-    sendTestNativeNotification('SR', 'works')
+    sendTestNativeNotification('Hermes', 'works')
     expect(notify).toHaveBeenCalledTimes(1)
   })
 })

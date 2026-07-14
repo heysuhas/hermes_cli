@@ -10,18 +10,16 @@ import {
   ProviderRow,
   providerTitle,
   sortProviders
-} from '@/components/onboarding'
+} from '@/components/desktop-onboarding-overlay'
 import { Button } from '@/components/ui/button'
-import { RowButton } from '@/components/ui/row-button'
 import { SearchField } from '@/components/ui/search-field'
-import { disconnectOAuthProvider, listOAuthProviders } from '@/sr'
+import { disconnectOAuthProvider, listOAuthProviders } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Terminal, Trash2 } from '@/lib/icons'
-import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 import { $desktopOnboarding, startManualProviderOAuth } from '@/store/onboarding'
-import type { EnvVarInfo, OAuthProvider } from '@/types/sr'
+import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
@@ -30,7 +28,7 @@ import { LoadingState, SettingsContent } from './primitives'
 
 // The embedded terminal (and thus the "run disconnect command" path) only
 // exists in the Electron desktop shell, not the web dashboard.
-const canRunInTerminal = () => typeof window !== 'undefined' && Boolean(window.srDesktop?.terminal)
+const canRunInTerminal = () => typeof window !== 'undefined' && Boolean(window.hermesDesktop?.terminal)
 
 // Parallel group headers ("Connected", "Other providers") so the expanded list
 // reads as its own section instead of bleeding into the connected group.
@@ -53,8 +51,8 @@ export type ProviderView = (typeof PROVIDER_VIEWS)[number]
 //
 // Grouping key precedence:
 //   1. Backend `provider_label` / `provider` (from the unified provider catalog
-//      in sr_cli/provider_catalog.py) — the SAME provider identity
-//      `sr model` uses. This is authoritative: a provider tagged by the
+//      in hermes_cli/provider_catalog.py) — the SAME provider identity
+//      `hermes model` uses. This is authoritative: a provider tagged by the
 //      backend always renders a card, even with no PROVIDER_GROUPS row.
 //   2. Desktop prefix match (`providerGroup`) — legacy fallback for provider
 //      env vars that predate the backend tagging.
@@ -229,9 +227,9 @@ function ConnectedProviderRow({
   const copy = t.settings.providers
   const title = providerTitle(provider)
   const Trail = provider.flow === 'external' ? Terminal : ChevronRight
-  // SR can clear this provider's creds via the API.
+  // Hermes can clear this provider's creds via the API.
   const canDisconnect = provider.disconnectable ?? provider.flow !== 'external'
-  // External (CLI-managed) provider SR can't clear via the API, but ships a
+  // External (CLI-managed) provider Hermes can't clear via the API, but ships a
   // command we can run in the embedded terminal (Electron shell only).
   const terminalDisconnect = !canDisconnect && Boolean(provider.disconnect_command) && canRunInTerminal()
   // Only fall back to a static "remove it elsewhere" hint when we offer no button.
@@ -239,7 +237,7 @@ function ConnectedProviderRow({
 
   return (
     <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-[6px] transition-colors hover:bg-(--ui-control-hover-background)">
-      <RowButton className="min-w-0 px-3 py-2.5 text-left" onClick={() => onSelect(provider)}>
+      <button className="min-w-0 px-3 py-2.5 text-left" onClick={() => onSelect(provider)} type="button">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[length:var(--conversation-text-font-size)] font-semibold">{title}</span>
           <span className="inline-flex shrink-0 items-center gap-1 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -253,7 +251,7 @@ function ConnectedProviderRow({
             {provider.flow === 'external' ? copy.removeExternalGeneric(title) : copy.removeKeyManaged(title)}
           </p>
         )}
-      </RowButton>
+      </button>
       <div className="flex items-center gap-1 pr-2">
         <Trail className="size-4 text-muted-foreground transition group-hover:text-foreground" />
         {canDisconnect && (
@@ -338,7 +336,7 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
   }, [onboardingActive])
 
   // External (CLI-managed) providers can't be cleared via the API by design —
-  // SR never deletes creds another tool owns behind a silent API call.
+  // Hermes never deletes creds another tool owns behind a silent API call.
   // Instead we run the documented removal command in the embedded terminal so
   // the user sees exactly what executes, then return them to chat to watch it.
   function handleTerminalDisconnect(provider: OAuthProvider) {
@@ -357,11 +355,7 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
     // Leave the settings overlay so the terminal pane (chat-only) is visible.
     onClose()
     runInTerminal(command)
-    notify({
-      kind: 'info',
-      title: t.settings.providers.removedTitle,
-      message: t.settings.providers.removeTerminalRunning(name)
-    })
+    notify({ kind: 'info', title: t.settings.providers.removedTitle, message: t.settings.providers.removeTerminalRunning(name) })
   }
 
   async function handleDisconnect(provider: OAuthProvider) {
@@ -375,12 +369,7 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
 
     try {
       await disconnectOAuthProvider(provider.id)
-      notify({
-        durationMs: 3_000,
-        kind: 'success',
-        title: t.settings.providers.removedTitle,
-        message: t.settings.providers.removedMessage(name)
-      })
+      notify({ durationMs: 3_000, kind: 'success', title: t.settings.providers.removedTitle, message: t.settings.providers.removedMessage(name) })
       await refreshOAuthProviders().catch(() => undefined)
     } catch (err) {
       notifyError(err, t.settings.providers.failedRemove(name))
@@ -401,11 +390,15 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
   const keyGroups = buildProviderKeyGroups(vars)
 
   if (showApiKeys) {
-    const q = normalize(keyQuery)
-
+    const q = keyQuery.trim().toLowerCase()
     const visibleGroups = q
       ? keyGroups.filter(group => {
-          const haystack = [group.name, group.description ?? '', group.primary[0], ...group.advanced.map(([k]) => k)]
+          const haystack = [
+            group.name,
+            group.description ?? '',
+            group.primary[0],
+            ...group.advanced.map(([k]) => k)
+          ]
 
           return haystack.some(s => s.toLowerCase().includes(q))
         })

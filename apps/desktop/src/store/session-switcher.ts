@@ -1,6 +1,6 @@
 import { atom } from 'nanostores'
 
-import type { SessionInfo } from '@/types/sr'
+import type { SessionInfo } from '@/types/hermes'
 
 import { $selectedStoredSessionId, $sessions } from './session'
 
@@ -95,7 +95,8 @@ export function openOrAdvanceSwitcher(direction: 1 | -1): string | null {
   return sessions[nextIndex]?.id ?? null
 }
 
-export const highlightedSessionId = (): string | null => $switcherSessions.get()[$switcherIndex.get()]?.id ?? null
+export const highlightedSessionId = (): string | null =>
+  $switcherSessions.get()[$switcherIndex.get()]?.id ?? null
 
 export const slotSessionId = (slot: number): string | null =>
   ($switcherOpen.get() || pendingBrowse ? $switcherSessions.get() : $sessions.get())[slot - 1]?.id ?? null

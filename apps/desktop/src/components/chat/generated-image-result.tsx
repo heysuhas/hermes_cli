@@ -19,13 +19,7 @@ const ASPECT_HINTS: Record<string, number> = {
 }
 
 function hintedRatio(aspectRatio?: string): number {
-  return (
-    ASPECT_HINTS[
-      String(aspectRatio ?? '')
-        .toLowerCase()
-        .trim()
-    ] ?? ASPECT_HINTS.landscape
-  )
+  return ASPECT_HINTS[String(aspectRatio ?? '').toLowerCase().trim()] ?? ASPECT_HINTS.landscape
 }
 
 function isInlineSrc(path: string): boolean {
@@ -37,15 +31,15 @@ async function resolveImageSrc(path: string): Promise<string> {
     return path
   }
 
-  if (window.srDesktop && isRemoteGateway()) {
+  if (window.hermesDesktop && isRemoteGateway()) {
     return gatewayMediaDataUrl(path)
   }
 
-  if (!window.srDesktop?.readFileDataUrl) {
+  if (!window.hermesDesktop?.readFileDataUrl) {
     return mediaExternalUrl(path)
   }
 
-  return window.srDesktop.readFileDataUrl(filePathFromMediaPath(path))
+  return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
 }
 
 export const GeneratedImage: FC<{ aspectRatio?: string; result?: unknown }> = ({ aspectRatio, result }) => {
@@ -100,7 +94,7 @@ export const GeneratedImage: FC<{ aspectRatio?: string; result?: unknown }> = ({
         href="#"
         onClick={event => {
           event.preventDefault()
-          void window.srDesktop?.openExternal(mediaExternalUrl(image))
+          void window.hermesDesktop?.openExternal(mediaExternalUrl(image))
         }}
       >
         {copy.openImage}: {mediaName(image)}

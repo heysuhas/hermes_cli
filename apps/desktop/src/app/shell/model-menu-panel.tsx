@@ -15,16 +15,10 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { SRGateway } from '@/sr'
+import type { HermesGateway } from '@/hermes'
+import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { requestModelOptions } from '@/lib/model-options'
-import {
-  currentPickerSelection,
-  displayModelName,
-  modelDisplayParts,
-  reasoningEffortLabel
-} from '@/lib/model-status-label'
-import { normalize } from '@/lib/text'
+import { currentPickerSelection, displayModelName, modelDisplayParts, reasoningEffortLabel } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
 import {
@@ -43,7 +37,7 @@ import {
   $currentProvider,
   $currentReasoningEffort
 } from '@/store/session'
-import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/sr'
+import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 
@@ -53,7 +47,7 @@ import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 export const ModelMenuCloseContext = createContext<() => void>(() => {})
 
 interface ModelMenuPanelProps {
-  gateway?: SRGateway
+  gateway?: HermesGateway
   onSelectModel: (selection: { model: string; provider: string }) => Promise<boolean> | void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
@@ -83,10 +77,13 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const modelOptions = useQuery({
     queryKey: ['model-options', activeSessionId || 'global'],
-    // Gateway-first even with no session yet: a connected (possibly remote)
-    // gateway owns the model catalog, including virtual providers like `moa`
-    // that the local REST fallback can't know about (#53817).
-    queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId: activeSessionId })
+    queryFn: (): Promise<ModelOptionsResponse> => {
+      if (gateway && activeSessionId) {
+        return gateway.request<ModelOptionsResponse>('model.options', { session_id: activeSessionId })
+      }
+
+      return getGlobalModelOptions()
+    }
   })
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
@@ -105,22 +102,9 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const providers = modelOptions.data?.providers
 
-  // The catalog carries MoA presets as a virtual `moa` provider row. Render
-  // them in their dedicated section below and keep the row out of the main
-  // provider groups so presets don't show up twice.
-  const moaPresets = useMemo(
-    () => providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? [],
-    [providers]
-  )
-
-  const pickerProviders = useMemo(
-    () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
-    [providers]
-  )
-
   const effectiveVisibleModels = useMemo(
-    () => effectiveVisibleKeys(visibleModels, pickerProviders),
-    [visibleModels, pickerProviders]
+    () => effectiveVisibleKeys(visibleModels, providers ?? []),
+    [visibleModels, providers]
   )
 
   // The composer picker never persists the profile default. With a session it
@@ -142,7 +126,13 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     try {
       const queryKey = ['model-options', activeSessionId || 'global']
 
-      const next = await requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
+      const next =
+        gateway && activeSessionId
+          ? await gateway.request<ModelOptionsResponse>('model.options', {
+              session_id: activeSessionId,
+              refresh: true
+            })
+          : await getGlobalModelOptions({ refresh: true })
 
       queryClient.setQueryData<ModelOptionsResponse>(queryKey, next)
     } catch {
@@ -155,7 +145,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   }
 
   // Selecting a model row restores that model's remembered preset onto the
-  // session (effort/fast), gated by capability. Unset → SR defaults.
+  // session (effort/fast), gated by capability. Unset → Hermes defaults.
   const selectFamily = async (family: ModelFamily, provider: ModelOptionProvider) => {
     const caps = provider.capabilities?.[family.id]
     const preset = modelPresets[modelPresetKey(provider.slug, family.id)] ?? {}
@@ -179,31 +169,19 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     )
   }
 
-  // Selecting a MoA preset switches the session to it PERSISTENTLY, using the
-  // same path real provider selections use (onSelectModel → config.set with
-  // --session for live sessions → the gateway's persistent switch_model).
-  // Previously this dispatched the one-shot `/moa` command, which ran a single
-  // turn through MoA and then silently reverted to the prior model (#54670) —
-  // the dropdown presented presets like persistent selections but they weren't.
-  // No session gate: like regular model rows, a pre-session pick is UI state
-  // shipped on the next session.create.
-  const selectMoaPreset = async (preset: string) => {
-    if ((await switchTo(preset, 'moa')) === false) {
-      return
-    }
-
-    closeMenu()
-  }
-
   const groups = useMemo(
-    () =>
-      groupModels(pickerProviders, search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
-    [pickerProviders, search, optionsModel, optionsProvider, effectiveVisibleModels]
+    () => groupModels(providers ?? [], search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
+    [providers, search, optionsModel, optionsProvider, effectiveVisibleModels]
   )
 
   return (
     <>
-      <DropdownMenuSearch aria-label={copy.search} onValueChange={setSearch} placeholder={copy.search} value={search} />
+      <DropdownMenuSearch
+        aria-label={copy.search}
+        onValueChange={setSearch}
+        placeholder={copy.search}
+        value={search}
+      />
 
       <DropdownMenuSeparator className="mx-0" />
 
@@ -224,7 +202,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
         <DropdownMenuItem className={dropdownMenuRow} disabled>
           {error}
         </DropdownMenuItem>
-      ) : groups.length === 0 && moaPresets.length === 0 ? (
+      ) : groups.length === 0 ? (
         <DropdownMenuItem className={dropdownMenuRow} disabled>
           {copy.noModels}
         </DropdownMenuItem>
@@ -249,12 +227,12 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                 const caps = group.provider.capabilities?.[family.id]
 
                 // Effective settings for this row: live session state when it's
-                // the active model, otherwise its remembered preset (SR
+                // the active model, otherwise its remembered preset (Hermes
                 // defaults when unset). Row label AND submenu read from these so
                 // they never disagree.
                 const preset = modelPresets[modelPresetKey(group.provider.slug, family.id)] ?? {}
-                const effEffort = isCurrent ? currentReasoningEffort : (preset.effort ?? '')
-                const effFast = isCurrent ? currentFastMode : (preset.fast ?? false)
+                const effEffort = isCurrent ? currentReasoningEffort : preset.effort ?? ''
+                const effFast = isCurrent ? currentFastMode : preset.fast ?? false
 
                 const fastControl = resolveFastControl(
                   activeId ?? family.id,
@@ -324,30 +302,6 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
       <DropdownMenuSeparator className="mx-0" />
 
-      {moaPresets.length > 0 ? (
-        <>
-          <DropdownMenuLabel className={dropdownMenuSectionLabel}>MoA presets</DropdownMenuLabel>
-          {moaPresets.map(preset => {
-            const isCurrentMoa = optionsProvider === 'moa' && optionsModel === preset
-
-            return (
-              <DropdownMenuItem
-                className={dropdownMenuRow}
-                key={`moa:${preset}`}
-                onSelect={event => {
-                  event.preventDefault()
-                  void selectMoaPreset(preset)
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">MoA: {preset}</span>
-                {isCurrentMoa ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
-              </DropdownMenuItem>
-            )
-          })}
-          <DropdownMenuSeparator className="mx-0" />
-        </>
-      ) : null}
-
       <DropdownMenuItem
         className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
         disabled={refreshing}
@@ -383,7 +337,7 @@ function groupModels(
   current: { model: string; provider: string },
   visible: Set<string> | null
 ): ProviderGroup[] {
-  const q = normalize(search)
+  const q = search.trim().toLowerCase()
   const groups: ProviderGroup[] = []
 
   for (const provider of providers) {

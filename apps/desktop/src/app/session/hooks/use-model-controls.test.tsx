@@ -2,15 +2,21 @@ import { QueryClient } from '@tanstack/react-query'
 import { cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getGlobalModelInfo } from '@/sr'
-import { $activeSessionId, $currentModel, $currentProvider, setCurrentModel, setCurrentProvider } from '@/store/session'
+import { getGlobalModelInfo } from '@/hermes'
+import {
+  $activeSessionId,
+  $currentModel,
+  $currentProvider,
+  setCurrentModel,
+  setCurrentProvider
+} from '@/store/session'
 
 import { useModelControls } from './use-model-controls'
 
 const setGlobalModel = vi.fn()
 const notifyError = vi.fn()
 
-vi.mock('@/sr', () => ({
+vi.mock('@/hermes', () => ({
   getGlobalModelInfo: vi.fn(),
   setGlobalModel: (...args: Parameters<typeof setGlobalModel>) => setGlobalModel(...args)
 }))
@@ -109,12 +115,16 @@ describe('useModelControls', () => {
     expect($currentProvider.get()).toBe('deepseek')
   })
 
-  it('routes active-session picker changes through config.set with an explicit session-scoped provider', async () => {
+  it('routes active-session picker changes through config.set with an explicit provider', async () => {
     const requestGateway = vi.fn(async () => ({ key: 'model', value: 'claude-sonnet-4.6' }) as never)
     let controls!: Controls
 
     render(
-      <Harness activeSessionId="session-1" onReady={value => (controls = value)} requestGateway={requestGateway} />
+      <Harness
+        activeSessionId="session-1"
+        onReady={value => (controls = value)}
+        requestGateway={requestGateway}
+      />
     )
 
     await expect(
@@ -127,38 +137,22 @@ describe('useModelControls', () => {
     expect(requestGateway).toHaveBeenCalledWith('config.set', {
       session_id: 'session-1',
       key: 'model',
-      value: 'claude-sonnet-4.6 --provider anthropic --session'
+      value: 'claude-sonnet-4.6 --provider anthropic'
     })
     expect(requestGateway).not.toHaveBeenCalledWith('slash.exec', expect.anything())
-  })
-
-  it('session-scopes MoA preset selections so they cannot persist as the global gateway default', async () => {
-    const requestGateway = vi.fn(async () => ({ key: 'model', value: 'BeastMode' }) as never)
-    let controls!: Controls
-
-    render(
-      <Harness activeSessionId="session-1" onReady={value => (controls = value)} requestGateway={requestGateway} />
-    )
-
-    await expect(
-      controls.selectModel({
-        model: 'BeastMode',
-        provider: 'moa'
-      })
-    ).resolves.toBe(true)
-
-    expect(requestGateway).toHaveBeenCalledWith('config.set', {
-      session_id: 'session-1',
-      key: 'model',
-      value: 'BeastMode --provider moa --session'
-    })
   })
 
   it('stores a no-session pick as UI state with no gateway or global write', async () => {
     const requestGateway = vi.fn()
     let controls!: Controls
 
-    render(<Harness activeSessionId={null} onReady={value => (controls = value)} requestGateway={requestGateway} />)
+    render(
+      <Harness
+        activeSessionId={null}
+        onReady={value => (controls = value)}
+        requestGateway={requestGateway}
+      />
+    )
 
     await expect(
       controls.selectModel({

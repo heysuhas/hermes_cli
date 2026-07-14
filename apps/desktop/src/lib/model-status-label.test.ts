@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  currentPickerSelection,
-  displayModelName,
-  formatModelStatusLabel,
-  reasoningEffortLabel
-} from './model-status-label'
+import { currentPickerSelection, displayModelName, formatModelStatusLabel, reasoningEffortLabel } from './model-status-label'
 
 describe('model-status-label', () => {
   it('formats display names consistently', () => {
@@ -22,9 +17,7 @@ describe('model-status-label', () => {
 
   it('maps reasoning effort to compact labels', () => {
     expect(reasoningEffortLabel('high')).toBe('High')
-    expect(reasoningEffortLabel('xhigh')).toBe('XHigh')
-    expect(reasoningEffortLabel('max')).toBe('Max')
-    expect(reasoningEffortLabel('ultra')).toBe('Ultra')
+    expect(reasoningEffortLabel('xhigh')).toBe('Max')
     expect(reasoningEffortLabel('')).toBe('')
   })
 
@@ -45,7 +38,7 @@ describe('model-status-label', () => {
 
   describe('currentPickerSelection', () => {
     const store = { model: 'opus', provider: 'anthropic' }
-    const options = { model: 'sr-4', provider: 'nous' }
+    const options = { model: 'hermes-4', provider: 'nous' }
 
     it('prefers the sticky composer pick over the profile default pre-session', () => {
       expect(currentPickerSelection(false, store, options)).toEqual(store)

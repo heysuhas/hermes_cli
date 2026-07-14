@@ -2,7 +2,7 @@
  * Install desktop themes from external sources.
  *
  * The heavy lifting (network + .vsix unzip) lives in the Electron main process
- * (`electron/vscode-marketplace.ts`), reached via `window.srDesktop.themes`.
+ * (`electron/vscode-marketplace.cjs`), reached via `window.hermesDesktop.themes`.
  * Main hands back the raw theme JSON; we parse + convert + persist here so the
  * conversion stays in one unit-testable place.
  */
@@ -17,7 +17,10 @@ import { convertVscodeColorTheme, parseVscodeTheme, vscodeThemeSlug } from './vs
 export const MARKETPLACE_ID_RE = /^[\w-]+\.[\w-]+$/
 
 /** Parse + convert + persist a pasted VS Code theme JSON. */
-export function installVscodeThemeFromText(text: string, opts?: { label?: string; source?: string }): DesktopTheme {
+export function installVscodeThemeFromText(
+  text: string,
+  opts?: { label?: string; source?: string }
+): DesktopTheme {
   const raw = parseVscodeTheme(text)
   const { theme } = convertVscodeColorTheme(raw, opts)
 
@@ -80,7 +83,7 @@ export async function installVscodeThemeFromMarketplace(id: string): Promise<Des
     throw new Error('Expected a Marketplace id like "publisher.extension".')
   }
 
-  const api = window.srDesktop?.themes
+  const api = window.hermesDesktop?.themes
 
   if (!api?.fetchMarketplace) {
     throw new Error('Marketplace install is only available in the desktop app.')

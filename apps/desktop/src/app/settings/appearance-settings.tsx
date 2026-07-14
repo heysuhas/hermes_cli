@@ -3,24 +3,19 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import type { DesktopMarketplaceSearchItem } from '@/global'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check, Download, Loader2, Palette, Trash2 } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
-import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
-import { $embedAllowed, $embedMode, clearEmbedAllowed, type EmbedMode, setEmbedMode } from '@/store/embed-consent'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
 import { $toolViewMode, setToolViewMode } from '@/store/tool-view'
 import { $translucency, setTranslucency } from '@/store/translucency'
-import { $zoomPercent, setZoomPercent } from '@/store/zoom'
 import { getBaseColors, useTheme } from '@/themes/context'
 import { installVscodeThemeFromMarketplace } from '@/themes/install'
-import type { DesktopTheme } from '@/themes/types'
-import { $marketplaceInstalls, isUserTheme, removeUserTheme } from '@/themes/user-themes'
+import { isUserTheme, removeUserTheme } from '@/themes/user-themes'
 
 import { MODE_OPTIONS } from './constants'
 import { PetSettings } from './pet-settings'
@@ -63,18 +58,6 @@ function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) 
   )
 }
 
-// UI scale presets, as zoom percentages. 100 is the browser-default size;
-// the ids double as the percent values sent to the main process. A Cmd/Ctrl
-// +/- step landing between presets highlights nothing, and the row
-// description keeps showing the exact current percent.
-const UI_SCALE_PRESETS = ['90', '100', '110', '125', '150', '175'] as const
-
-type UiScalePreset = (typeof UI_SCALE_PRESETS)[number]
-
-function matchUiScalePreset(percent: number): UiScalePreset | null {
-  return UI_SCALE_PRESETS.find(preset => Number(preset) === percent) ?? null
-}
-
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value)
 
@@ -97,39 +80,26 @@ const compactNumber = new Intl.NumberFormat(undefined, { notation: 'compact', ma
  */
 function MarketplaceThemeResults({
   query,
-  installs,
+  installedExtIds,
   onInstalled
 }: {
   query: string
-  installs: ReadonlyMap<string, DesktopTheme>
+  installedExtIds: Set<string>
   onInstalled: (name: string) => void
 }) {
   const { t } = useI18n()
   const copy = t.commandCenter.installTheme
   const debounced = useDebounced(query.trim(), 300)
   const [installingId, setInstallingId] = useState<string | null>(null)
+  const [installedHere, setInstalledHere] = useState<Record<string, true>>({})
   const [error, setError] = useState<string | null>(null)
 
   const search = useQuery({
     enabled: debounced.length > 0,
-    queryFn: () => window.srDesktop?.themes?.searchMarketplace(debounced) ?? Promise.resolve([]),
+    queryFn: () => window.hermesDesktop?.themes?.searchMarketplace(debounced) ?? Promise.resolve([]),
     queryKey: ['marketplace-themes-settings', debounced],
     staleTime: 5 * 60 * 1000
   })
-
-  // Already installed → just re-activate it; never re-download what we have.
-  const select = (item: DesktopMarketplaceSearchItem) => {
-    const owned = installs.get(item.extensionId)
-
-    if (owned) {
-      triggerHaptic('crisp')
-      onInstalled(owned.name)
-
-      return
-    }
-
-    void install(item)
-  }
 
   const install = async (item: DesktopMarketplaceSearchItem) => {
     if (installingId) {
@@ -143,6 +113,7 @@ function MarketplaceThemeResults({
       const theme = await installVscodeThemeFromMarketplace(item.extensionId)
 
       triggerHaptic('crisp')
+      setInstalledHere(prev => ({ ...prev, [item.extensionId]: true }))
       onInstalled(theme.name)
     } catch (e) {
       setError(e instanceof Error ? e.message : copy.error)
@@ -200,7 +171,7 @@ function MarketplaceThemeResults({
       <div className="grid gap-2 sm:grid-cols-2">
         {results.map(item => {
           const busy = installingId === item.extensionId
-          const done = installs.has(item.extensionId)
+          const done = installedHere[item.extensionId] || installedExtIds.has(item.extensionId)
 
           return (
             <button
@@ -210,7 +181,7 @@ function MarketplaceThemeResults({
               )}
               disabled={Boolean(installingId) && !busy}
               key={item.extensionId}
-              onClick={() => select(item)}
+              onClick={() => void install(item)}
               type="button"
             >
               <Palette className="size-4 shrink-0 text-(--ui-text-tertiary)" />
@@ -244,11 +215,7 @@ export function AppearanceSettings() {
   const { t, isSavingLocale } = useI18n()
   const { themeName, mode, resolvedMode, availableThemes, setTheme, setMode } = useTheme()
   const toolViewMode = useStore($toolViewMode)
-  const zoomPercent = useStore($zoomPercent)
-  const embedMode = useStore($embedMode)
-  const embedAllowed = useStore($embedAllowed)
   const translucency = useStore($translucency)
-  const installs = useStore($marketplaceInstalls)
   const profiles = useStore($profiles)
   const activeProfileKey = normalizeProfileKey(useStore($activeGatewayProfile))
   const a = t.settings.appearance
@@ -258,7 +225,7 @@ export function AppearanceSettings() {
   // One box does double duty: filter installed themes live (below), and run a
   // name search against the VS Code Marketplace (the Cmd-K "Install theme…"
   // backend) for anything not already installed.
-  const needle = normalize(query)
+  const needle = query.trim().toLowerCase()
 
   const filteredThemes = availableThemes
     .filter(
@@ -270,6 +237,20 @@ export function AppearanceSettings() {
     )
     // Active theme first; stable sort keeps the rest in their original order.
     .sort((a, b) => Number(b.name === themeName) - Number(a.name === themeName))
+
+  // Marketplace imports describe themselves as "VS Code · <publisher.extension>";
+  // pull those ids back out so search results already imported show as installed.
+  const MARKETPLACE_DESC_PREFIX = 'VS Code · '
+
+  const installedExtIds = new Set(
+    availableThemes
+      .map(theme =>
+        theme.description.startsWith(MARKETPLACE_DESC_PREFIX)
+          ? theme.description.slice(MARKETPLACE_DESC_PREFIX.length)
+          : ''
+      )
+      .filter(Boolean)
+  )
 
   // Themes save per profile. Surface that only when the user actually has more
   // than one profile (single-profile installs never see the distinction).
@@ -284,16 +265,6 @@ export function AppearanceSettings() {
     { id: 'product', label: a.product },
     { id: 'technical', label: a.technical }
   ] as const
-
-  const embedOptions = [
-    { id: 'ask', label: a.embedsAsk },
-    { id: 'always', label: a.embedsAlways },
-    { id: 'off', label: a.embedsOff }
-  ] as const satisfies readonly { id: EmbedMode; label: string }[]
-
-  const uiScaleOptions = UI_SCALE_PRESETS.map(preset => ({ id: preset, label: `${preset}%` }))
-
-  const matchedScalePreset = matchUiScalePreset(zoomPercent)
 
   return (
     <SettingsContent>
@@ -384,7 +355,11 @@ export function AppearanceSettings() {
                       })}
                     </div>
                   )}
-                  <MarketplaceThemeResults installs={installs} onInstalled={name => setTheme(name)} query={query} />
+                  <MarketplaceThemeResults
+                    installedExtIds={installedExtIds}
+                    onInstalled={name => setTheme(name)}
+                    query={query}
+                  />
                 </div>
                 {showProfileNote && (
                   <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
@@ -408,21 +383,6 @@ export function AppearanceSettings() {
               </div>
             }
             wide
-          />
-
-          <ListRow
-            action={
-              <SegmentedControl
-                onChange={id => {
-                  triggerHaptic('selection')
-                  setZoomPercent(Number(id))
-                }}
-                options={uiScaleOptions}
-                value={matchedScalePreset ?? ('' as UiScalePreset)}
-              />
-            }
-            description={a.uiScaleDesc(zoomPercent)}
-            title={a.uiScaleTitle}
           />
 
           <ListRow
@@ -464,35 +424,6 @@ export function AppearanceSettings() {
             }
             description={a.toolViewDesc}
             title={a.toolViewTitle}
-          />
-
-          <ListRow
-            action={
-              <div className="flex flex-col items-end gap-1.5">
-                <SegmentedControl
-                  onChange={id => {
-                    triggerHaptic('selection')
-                    setEmbedMode(id)
-                  }}
-                  options={embedOptions}
-                  value={embedMode}
-                />
-                {embedAllowed.length > 0 && (
-                  <Button
-                    onClick={() => {
-                      triggerHaptic('selection')
-                      clearEmbedAllowed()
-                    }}
-                    size="inline"
-                    variant="text"
-                  >
-                    {a.embedsReset(embedAllowed.length)}
-                  </Button>
-                )}
-              </div>
-            }
-            description={a.embedsDesc}
-            title={a.embedsTitle}
           />
         </div>
       </div>

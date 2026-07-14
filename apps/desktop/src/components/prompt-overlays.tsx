@@ -3,7 +3,7 @@
 import { useStore } from '@nanostores/react'
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 
-import { PendingApprovalFallback } from '@/components/assistant-ui/tool/approval'
+import { PendingApprovalFallback } from '@/components/assistant-ui/tool-approval'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useI18n } from '@/i18n'
-import { isMissingPendingPromptRequest } from '@/lib/gateway-rpc'
 import { triggerHaptic } from '@/lib/haptics'
 import { KeyRound, Loader2, Lock } from '@/lib/icons'
 import { $gateway } from '@/store/gateway'
@@ -70,12 +69,6 @@ function SudoDialog() {
         triggerHaptic('submit')
         clearSudoRequest(request.sessionId, request.requestId)
       } catch (error) {
-        if (isMissingPendingPromptRequest(error, 'password')) {
-          clearSudoRequest(request.sessionId, request.requestId)
-
-          return
-        }
-
         notifyError(error, copy.sudoSendFailed)
         setSubmitting(false)
       }
@@ -172,12 +165,6 @@ function SecretDialog() {
         triggerHaptic('submit')
         clearSecretRequest(request.sessionId, request.requestId)
       } catch (error) {
-        if (isMissingPendingPromptRequest(error, 'value')) {
-          clearSecretRequest(request.sessionId, request.requestId)
-
-          return
-        }
-
         notifyError(error, copy.secretSendFailed)
         setSubmitting(false)
       }

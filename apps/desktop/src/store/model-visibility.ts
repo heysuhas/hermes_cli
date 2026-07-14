@@ -1,9 +1,9 @@
 import { atom } from 'nanostores'
 
 import { persistString, storedString } from '@/lib/storage'
-import type { ModelOptionProvider } from '@/types/sr'
+import type { ModelOptionProvider } from '@/types/hermes'
 
-const STORAGE_KEY = 'sr.desktop.visible-models'
+const STORAGE_KEY = 'hermes.desktop.visible-models'
 
 /** Models shown per provider in the status-bar dropdown before the user has
  *  customized the list. Backend `models` are already relevance-ordered. */
@@ -23,7 +23,8 @@ export const emptyProviderSentinelKey = (provider: string): string =>
   modelVisibilityKey(provider, EMPTY_PROVIDER_SENTINEL)
 
 /** Check whether a stored key is a provider-hidden sentinel. */
-export const isProviderSentinel = (key: string): boolean => key.endsWith('::')
+export const isProviderSentinel = (key: string): boolean =>
+  key.endsWith('::')
 
 /** A model and its optional `…-fast` sibling, collapsed into one logical row.
  *  `id` is the canonical (base) model; `fastId` is the fast variant if present. */
@@ -127,7 +128,10 @@ function expandProviderDefaults(provider: ModelOptionProvider, target: Set<strin
  *  sentinels are PRESERVED here — this is the set the toggle handler mutates and
  *  persists, so dropping a sentinel would silently re-enable a provider the user
  *  emptied. Use `effectiveVisibleKeys` for display (sentinels stripped). */
-export function resolveVisibleKeys(stored: Set<string> | null, providers: readonly ModelOptionProvider[]): Set<string> {
+export function resolveVisibleKeys(
+  stored: Set<string> | null,
+  providers: readonly ModelOptionProvider[]
+): Set<string> {
   if (!stored) {
     return defaultVisibleKeys(providers)
   }
@@ -141,7 +145,9 @@ export function resolveVisibleKeys(stored: Set<string> | null, providers: readon
   for (const provider of providers) {
     const providerPrefix = `${provider.slug}::`
 
-    const hasStoredProvider = [...stored].some(key => key.startsWith(providerPrefix) && !isProviderSentinel(key))
+    const hasStoredProvider = [...stored].some(
+      key => key.startsWith(providerPrefix) && !isProviderSentinel(key)
+    )
 
     const hasSentinel = stored.has(emptyProviderSentinelKey(provider.slug))
 
@@ -193,7 +199,9 @@ export function toggleModelVisibility(
     next.delete(key)
 
     // Check if this was the last real model for this provider.
-    const remainingForProvider = [...next].some(k => k.startsWith(`${providerSlug}::`) && !isProviderSentinel(k))
+    const remainingForProvider = [...next].some(
+      k => k.startsWith(`${providerSlug}::`) && !isProviderSentinel(k)
+    )
 
     if (!remainingForProvider) {
       next.add(sentinel)

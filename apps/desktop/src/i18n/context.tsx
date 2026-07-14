@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getSRConfigRecord, type SRConfigRecord, saveSRConfig } from '@/sr'
+import { getHermesConfigRecord, type HermesConfigRecord, saveHermesConfig } from '@/hermes'
 
 import { TRANSLATIONS } from './catalog'
 import { DEFAULT_LOCALE, localeConfigValue, normalizeLocale } from './languages'
@@ -10,24 +10,24 @@ import type { Locale, Translations } from './types'
 export { LOCALE_META } from './languages'
 
 export interface I18nConfigClient {
-  getConfig: () => Promise<SRConfigRecord>
-  saveConfig: (config: SRConfigRecord) => Promise<{ ok: boolean }>
+  getConfig: () => Promise<HermesConfigRecord>
+  saveConfig: (config: HermesConfigRecord) => Promise<{ ok: boolean }>
 }
 
 const defaultConfigClient: I18nConfigClient = {
   getConfig: () => {
-    if (typeof window === 'undefined' || !window.srDesktop?.api) {
+    if (typeof window === 'undefined' || !window.hermesDesktop?.api) {
       return Promise.resolve({})
     }
 
-    return getSRConfigRecord()
+    return getHermesConfigRecord()
   },
   saveConfig: config => {
-    if (typeof window === 'undefined' || !window.srDesktop?.api) {
+    if (typeof window === 'undefined' || !window.hermesDesktop?.api) {
       return Promise.resolve({ ok: true })
     }
 
-    return saveSRConfig(config)
+    return saveHermesConfig(config)
   }
 }
 
@@ -35,11 +35,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function getConfigDisplayLanguage(config: SRConfigRecord): unknown {
+export function getConfigDisplayLanguage(config: HermesConfigRecord): unknown {
   return isRecord(config.display) ? config.display.language : undefined
 }
 
-export function withConfigDisplayLanguage(config: SRConfigRecord, locale: Locale): SRConfigRecord {
+export function withConfigDisplayLanguage(config: HermesConfigRecord, locale: Locale): HermesConfigRecord {
   const display = isRecord(config.display) ? config.display : {}
 
   return {

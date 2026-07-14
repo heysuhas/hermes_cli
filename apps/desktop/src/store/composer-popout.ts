@@ -2,8 +2,8 @@ import { atom } from 'nanostores'
 
 import { persistBoolean, persistString, storedBoolean, storedString } from '@/lib/storage'
 
-const POPOUT_ENABLED_STORAGE_KEY = 'sr.desktop.composerPopout.enabled'
-const POPOUT_POSITION_STORAGE_KEY = 'sr.desktop.composerPopout.position'
+const POPOUT_ENABLED_STORAGE_KEY = 'hermes.desktop.composerPopout.enabled'
+const POPOUT_POSITION_STORAGE_KEY = 'hermes.desktop.composerPopout.position'
 
 /** Where the floating composer's bottom-right corner sits, measured as an inset
  *  from the viewport's bottom/right edges. Anchoring to the bottom-right keeps
@@ -122,10 +122,7 @@ export function setComposerPoppedOut(value: boolean) {
  *  unless `persist`. Returns the clamped position so callers can sync their live
  *  ref. Pass the measured `size` for exact bounds; otherwise a fallback keeps it
  *  on-screen. */
-export function setComposerPopoutPosition(
-  position: PopoutPosition,
-  { area, persist, size }: SetPositionOptions = {}
-): PopoutPosition {
+export function setComposerPopoutPosition(position: PopoutPosition, { area, persist, size }: SetPositionOptions = {}): PopoutPosition {
   const next = clampPosition(position, size, area)
   $composerPopoutPosition.set(next)
 
