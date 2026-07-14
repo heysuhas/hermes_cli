@@ -1,8 +1,8 @@
 import { atom } from 'nanostores'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { HermesConnection } from '@/global'
-import type { ProfileInfo } from '@/types/hermes'
+import type { SRConnection } from '@/global'
+import type { ProfileInfo } from '@/types/sr'
 
 // Keep profile.ts's side-effecting imports inert: the gateway socket layer and
 // the REST query client must not run for real in a unit test.
@@ -11,7 +11,7 @@ const $gateway = atom<unknown>({ id: 'live-socket' })
 const resetStarmapGraph = vi.fn()
 
 vi.mock('@/store/gateway', () => ({ $gateway, ensureGatewayForProfile }))
-vi.mock('@/hermes', () => ({
+vi.mock('@/sr', () => ({
   getProfiles: vi.fn(async () => ({ profiles: [] })),
   setApiRequestProfile: vi.fn()
 }))
@@ -21,25 +21,25 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph }))
 const { $activeGatewayProfile, $profiles, ensureGatewayProfile, refreshProfiles } = await import('./profile')
 const { $connection } = await import('./session')
 const { queryClient } = await import('@/lib/query-client')
-const { getProfiles } = await import('@/hermes')
+const { getProfiles } = await import('@/sr')
 
 const profile = (name: string, isDefault = false): ProfileInfo => ({
   has_env: false,
   is_default: isDefault,
   model: null,
   name,
-  path: `/tmp/hermes/${name}`,
+  path: `/tmp/sr/${name}`,
   provider: null,
   skill_count: 0
 })
 
-const remoteConn = (over: Partial<HermesConnection> = {}): HermesConnection =>
-  ({ baseUrl: 'https://hermes-roy.tail.ts.net', mode: 'remote', profile: 'vps-remote', ...over }) as HermesConnection
+const remoteConn = (over: Partial<SRConnection> = {}): SRConnection =>
+  ({ baseUrl: 'https://sr-roy.tail.ts.net', mode: 'remote', profile: 'vps-remote', ...over }) as SRConnection
 
-const localConn = (over: Partial<HermesConnection> = {}): HermesConnection =>
-  ({ baseUrl: '', mode: 'local', profile: 'default', ...over }) as HermesConnection
+const localConn = (over: Partial<SRConnection> = {}): SRConnection =>
+  ({ baseUrl: '', mode: 'local', profile: 'default', ...over }) as SRConnection
 
-const getConnection = vi.fn<(profile?: string | null) => Promise<HermesConnection>>()
+const getConnection = vi.fn<(profile?: string | null) => Promise<SRConnection>>()
 
 beforeEach(() => {
   getConnection.mockReset()
@@ -48,7 +48,7 @@ beforeEach(() => {
   $activeGatewayProfile.set('default')
   $connection.set(localConn())
   $profiles.set([])
-  vi.stubGlobal('window', { hermesDesktop: { getConnection } })
+  vi.stubGlobal('window', { srDesktop: { getConnection } })
   vi.mocked(queryClient.invalidateQueries).mockClear()
   resetStarmapGraph.mockClear()
 })

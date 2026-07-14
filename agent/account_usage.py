@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, Optional
 import httpx
 
 from agent.anthropic_adapter import _is_oauth_token, resolve_anthropic_token
-from hermes_cli.auth import AuthError, _read_codex_tokens, resolve_codex_runtime_credentials
-from hermes_cli.runtime_provider import resolve_runtime_provider
+from sr_cli.auth import AuthError, _read_codex_tokens, resolve_codex_runtime_credentials
+from sr_cli.runtime_provider import resolve_runtime_provider
 
 if TYPE_CHECKING:
     from typing import TypeGuard
@@ -145,7 +145,7 @@ def build_nous_credits_snapshot(account_info) -> Optional[AccountUsageSnapshot]:
     account info to show (fail-open: caller just shows nothing).
     """
     try:
-        from hermes_cli.nous_account import nous_portal_topup_url
+        from sr_cli.nous_account import nous_portal_topup_url
 
         if account_info is None or not getattr(account_info, "logged_in", False):
             return None
@@ -239,7 +239,7 @@ def nous_credits_lines(*, markdown: bool = False, timeout: float = 10.0) -> list
     the same block regardless of session API-call count or resume state. Fail-open:
     any auth/portal hiccup or timeout returns [] (the caller shows nothing).
 
-    Dev override: when HERMES_DEV_CREDITS_FIXTURE selects a fixture state, /usage
+    Dev override: when SR_DEV_CREDITS_FIXTURE selects a fixture state, /usage
     renders from that fixture instead of the real portal (so the block + gauge are
     testable without a live account). Throwaway scaffolding.
     """
@@ -255,7 +255,7 @@ def nous_credits_lines(*, markdown: bool = False, timeout: float = 10.0) -> list
         return render_account_usage_lines(snapshot, markdown=markdown)
 
     try:
-        from hermes_cli.auth import get_provider_auth_state
+        from sr_cli.auth import get_provider_auth_state
 
         tok = (get_provider_auth_state("nous") or {}).get("access_token")
         if not (isinstance(tok, str) and tok.strip()):
@@ -265,7 +265,7 @@ def nous_credits_lines(*, markdown: bool = False, timeout: float = 10.0) -> list
     try:
         import concurrent.futures
 
-        from hermes_cli.nous_account import get_nous_portal_account_info
+        from sr_cli.nous_account import get_nous_portal_account_info
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             account = pool.submit(
@@ -284,7 +284,7 @@ def _snapshot_from_credits_state(state) -> Optional[AccountUsageSnapshot]:
     """Map a header-shaped CreditsState (e.g. a dev fixture) to the /usage snapshot.
 
     Renders the same magnitudes + monthly-grant % window the portal path produces,
-    so HERMES_DEV_CREDITS_FIXTURE can exercise /usage without a live account. The
+    so SR_DEV_CREDITS_FIXTURE can exercise /usage without a live account. The
     *_usd strings are mock display values here (not server balance to compute on);
     the % comes from CreditsState.used_fraction (micros math). Fail-open → None.
     """
@@ -325,7 +325,7 @@ def _snapshot_from_credits_state(state) -> Optional[AccountUsageSnapshot]:
         if not windows and not details:
             return None
 
-        details.append("(dev fixture — HERMES_DEV_CREDITS_FIXTURE)")
+        details.append("(dev fixture — SR_DEV_CREDITS_FIXTURE)")
         return AccountUsageSnapshot(
             provider="nous",
             source="dev-fixture",
@@ -365,7 +365,7 @@ def build_credits_view(*, markdown: bool = False, timeout: float = 10.0) -> Cred
     """
     not_logged_in = CreditsView(logged_in=False)
     try:
-        from hermes_cli.auth import get_provider_auth_state
+        from sr_cli.auth import get_provider_auth_state
 
         tok = (get_provider_auth_state("nous") or {}).get("access_token")
         if not (isinstance(tok, str) and tok.strip()):
@@ -376,7 +376,7 @@ def build_credits_view(*, markdown: bool = False, timeout: float = 10.0) -> Cred
     try:
         import concurrent.futures
 
-        from hermes_cli.nous_account import (
+        from sr_cli.nous_account import (
             get_nous_portal_account_info,
             nous_portal_topup_url,
         )
@@ -443,7 +443,7 @@ def _resolve_codex_usage_credentials(
     """Resolve Codex quota credentials from the native runtime path.
 
     Prefer explicit live-agent credentials, then the legacy singleton OAuth
-    state, then the credential pool.  Hermes's native OAuth setup now stores
+    state, then the credential pool.  SR's native OAuth setup now stores
     device-code logins in the pool, so quota diagnostics must not depend only
     on the older singleton store.
     """
@@ -542,64 +542,22 @@ def _fetch_codex_account_usage(
     )
 
 
-def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
-    token = (resolve_anthropic_token() or "").strip()
-    if not token:
-        return None
-    if not _is_oauth_token(token):
-        return AccountUsageSnapshot(
-            provider="anthropic",
-            source="oauth_usage_api",
-            fetched_at=_utc_now(),
-            unavailable_reason="Anthropic account limits are only available for OAuth-backed Claude accounts.",
-        )
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.0",
-    }
-    with httpx.Client(timeout=15.0) as client:
-        response = client.get("https://api.anthropic.com/api/oauth/usage", headers=headers)
-        response.raise_for_status()
-    payload = response.json() or {}
-    windows: list[AccountUsageWindow] = []
-    mapping = (
-        ("five_hour", "Current session"),
-        ("seven_day", "Current week"),
-        ("seven_day_opus", "Opus week"),
-        ("seven_day_sonnet", "Sonnet week"),
-    )
-    for key, label in mapping:
-        window = payload.get(key) or {}
-        util = window.get("utilization")
-        if util is None:
-            continue
-        used = float(util) * 100 if float(util) <= 1 else float(util)
-        windows.append(
-            AccountUsageWindow(
-                label=label,
-                used_percent=used,
-                reset_at=_parse_dt(window.get("resets_at")),
-            )
-        )
-    details: list[str] = []
-    extra = payload.get("extra_usage") or {}
-    if extra.get("is_enabled"):
-        used_credits = extra.get("used_credits")
-        monthly_limit = extra.get("monthly_limit")
-        currency = extra.get("currency") or "USD"
-        if isinstance(used_credits, (int, float)) and isinstance(monthly_limit, (int, float)):
-            details.append(
-                f"Extra usage: {used_credits:.2f} / {monthly_limit:.2f} {currency}"
-            )
+def _fetch_anthropic_oauth_usage(token: Optional[str]) -> AccountUsageSnapshot:
+    """Fetch usage stats for an Anthropic OAuth account."""
     return AccountUsageSnapshot(
         provider="anthropic",
         source="oauth_usage_api",
         fetched_at=_utc_now(),
-        windows=tuple(windows),
-        details=tuple(details),
+        unavailable_reason="Usage API calls are disabled in this corporate environment.",
+    )
+
+
+def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
+    return AccountUsageSnapshot(
+        provider="anthropic",
+        source="oauth_usage_api",
+        fetched_at=_utc_now(),
+        unavailable_reason="Usage API calls are disabled in this corporate environment.",
     )
 
 

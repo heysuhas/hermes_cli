@@ -1,6 +1,6 @@
 import pytest
 
-from hermes_cli import web_server
+from sr_cli import web_server
 
 
 @pytest.mark.asyncio

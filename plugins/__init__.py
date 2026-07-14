@@ -1,1 +1,1 @@
-# Hermes plugins package
+# SR plugins package

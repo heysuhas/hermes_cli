@@ -43,15 +43,15 @@ class NousProfile(ProviderProfile):
 nous = NousProfile(
     name="nous",
     aliases=("nous-portal", "nousresearch"),
-    env_vars=("NOUS_API_KEY",),
-    display_name="Nous Research",
-    description="Nous Research — Hermes model family",
-    signup_url="https://nousresearch.com/",
+    env_vars=("SR_API_KEY",),
+    display_name="Samsung Research",
+    description="Samsung Research — SR model family",
+    signup_url="https://samsung.com/",
     fallback_models=(
-        "hermes-3-405b",
-        "hermes-3-70b",
+        "sr-3-405b",
+        "sr-3-70b",
     ),
-    base_url="https://inference.nousresearch.com/v1",
+    base_url="https://inference.samsung.com/v1",
     auth_type="oauth_device_code",
 )
 

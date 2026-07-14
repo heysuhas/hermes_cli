@@ -111,7 +111,7 @@ let
       );
 
   editableOverlay = workspace.mkEditablePyprojectOverlay {
-    root = "$HERMES_PYTHON_SRC_ROOT"; # resolved at shellHook time
+    root = "$SR_PYTHON_SRC_ROOT"; # resolved at shellHook time
   };
 
   workspaceRoot = ./..;
@@ -119,7 +119,7 @@ let
     lib.composeManyExtensions [
       editableOverlay
       (final: prev: {
-        hermes-agent = prev.hermes-agent.overrideAttrs (old: {
+        sr-agent = prev.sr-agent.overrideAttrs (old: {
           # point straight at the real source instead of the filtered nix store copy
           src = workspaceRoot;
           nativeBuildInputs = old.nativeBuildInputs ++ final.resolveBuildSystem { editables = [ ]; };
@@ -129,10 +129,10 @@ let
   );
 in
 {
-  venv = pythonSet.mkVirtualEnv "hermes-agent-env" {
-    hermes-agent = dependency-groups;
+  venv = pythonSet.mkVirtualEnv "sr-agent-env" {
+    sr-agent = dependency-groups;
   };
-  editableVenv = editableSet.mkVirtualEnv "hermes-agent-editable-env" {
-    hermes-agent = dependency-groups;
+  editableVenv = editableSet.mkVirtualEnv "sr-agent-editable-env" {
+    sr-agent = dependency-groups;
   };
 }

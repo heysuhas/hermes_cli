@@ -11,14 +11,14 @@
     { pkgs, self', ... }:
     let
       packages = builtins.attrValues self'.packages;
-      hermesNpmLib = self'.packages.default.passthru.hermesNpmLib;
+      srNpmLib = self'.packages.default.passthru.srNpmLib;
 
       # Collect all packageJsonPath values from npm workspace packages.
       npmPackageJsonPaths = builtins.filter (p: p != null) (
         map (p: p.passthru.packageJsonPath or null) packages
       );
 
-      # Non-npm packages may have their own devShellHook (e.g. hermes-agent
+      # Non-npm packages may have their own devShellHook (e.g. sr-agent
       # stamps pyproject.toml + uv.lock for Python venv setup).
       nonNpmHooks = map (p: p.passthru.devShellHook or "") packages;
       combinedNonNpm = pkgs.lib.concatStringsSep "\n" (builtins.filter (h: h != "") nonNpmHooks);
@@ -28,9 +28,9 @@
         packages =
           with pkgs;
           [
-            (pkgs.runCommand "hermes" { } ''
+            (pkgs.runCommand "sr" { } ''
               mkdir -p $out/bin
-              install -Dm755 ${../hermes} $out/bin/hermes
+              install -Dm755 ${../sr} $out/bin/sr
             '')
             (pkgs.runCommand "dev-sandbox" { } ''
               mkdir -p $out/bin
@@ -41,12 +41,12 @@
           ++ self'.packages.default.passthru.devDeps;
         shellHook = ''
           ${combinedNonNpm}
-          ${hermesNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
+          ${srNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
 
           # for the devshell to pick up the src
-          export HERMES_PYTHON_SRC_ROOT=$(git rev-parse --show-toplevel)
-          echo "Hermes Agent dev shell in $HERMES_PYTHON_SRC_ROOT"
-          echo "Ready. Run 'hermes' or 'sandbox hermes' to start."
+          export SR_PYTHON_SRC_ROOT=$(git rev-parse --show-toplevel)
+          echo "SR Agent dev shell in $SR_PYTHON_SRC_ROOT"
+          echo "Ready. Run 'sr' or 'sandbox sr' to start."
         '';
       };
     };

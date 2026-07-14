@@ -20,15 +20,15 @@ const SYSTEM_MONO =
 
 export const DEFAULT_TYPOGRAPHY: DesktopThemeTypography = { fontSans: SYSTEM_SANS, fontMono: SYSTEM_MONO }
 
-const NOUS_BLUE = '#0053FD'
+const SR_BLUE = '#0053FD'
 const PSYCHE_BLUE = '#1540B1'
 const PSYCHE_WARM = '#FFE6CB'
 
-const nousTint = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, #FFFFFF)`
-const nousTintTransparent = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, transparent)`
+const nousTint = (pct: number) => `color-mix(in srgb, ${SR_BLUE} ${pct}%, #FFFFFF)`
+const nousTintTransparent = (pct: number) => `color-mix(in srgb, ${SR_BLUE} ${pct}%, transparent)`
 
 /**
- * Nous — canonical Hermes desktop identity. The palette keeps the current
+ * Nous — canonical SR desktop identity. The palette keeps the current
  * glass geometry neutral, then lets the old bb/gui blue and psyche cream
  * return as accent seeds.
  */
@@ -45,7 +45,7 @@ export const nousTheme: DesktopTheme = {
     mutedForeground: '#666678',
     popover: '#FFFFFF',
     popoverForeground: '#17171A',
-    primary: NOUS_BLUE,
+    primary: SR_BLUE,
     primaryForeground: '#FCFCFC',
     secondary: nousTint(7),
     secondaryForeground: '#242432',
@@ -53,9 +53,9 @@ export const nousTheme: DesktopTheme = {
     accentForeground: '#202030',
     border: nousTintTransparent(22),
     input: nousTintTransparent(30),
-    ring: NOUS_BLUE,
-    midground: NOUS_BLUE,
-    composerRing: NOUS_BLUE,
+    ring: SR_BLUE,
+    midground: SR_BLUE,
+    composerRing: SR_BLUE,
     destructive: '#C72E4D',
     destructiveForeground: '#FFFFFF',
     sidebarBackground: '#F3F7FF',
@@ -81,7 +81,7 @@ export const nousTheme: DesktopTheme = {
     border: '#3158AD',
     input: '#0B2566',
     ring: PSYCHE_WARM,
-    midground: NOUS_BLUE,
+    midground: SR_BLUE,
     composerRing: PSYCHE_WARM,
     destructive: '#C0473A',
     destructiveForeground: '#FEF2F2',

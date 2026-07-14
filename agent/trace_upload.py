@@ -1,6 +1,6 @@
-"""Upload a Hermes session transcript to Hugging Face as an agent trace.
+"""Upload a SR session transcript to Hugging Face as an agent trace.
 
-Hermes stores sessions in its own SQLite store (``hermes_state.SessionDB``),
+SR stores sessions in its own SQLite store (``sr_state.SessionDB``),
 so we reconstruct the conversation and emit it in the **Claude Code JSONL**
 shape — one of the three formats the Hugging Face Agent Trace Viewer
 auto-detects (Claude Code / Codex / Pi). No dataset-side preprocessing is
@@ -11,11 +11,11 @@ Docs: https://huggingface.co/docs/hub/agent-traces
 Design notes
 ------------
 * **Zero LLM turn.** This is a deterministic export — it never spends a
-  model call. The ``hermes trace upload`` subcommand calls
+  model call. The ``sr trace upload`` subcommand calls
   :func:`upload_session_trace` directly.
 * **Private by default.** Traces can contain prompts, tool output, local
   paths, and secrets. The dataset is created private and every text body
-  is passed through Hermes' secret redactor (``force=True``) unless the
+  is passed through SR' secret redactor (``force=True``) unless the
   caller explicitly opts out with ``redact=False``.
 * **Never raises.** Returns a user-facing status string so command
   handlers can echo it straight back to the user. Programmatic callers
@@ -34,8 +34,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATASET_NAME = "hermes-traces"
-_HERMES_VERSION = "hermes-agent"
+DEFAULT_DATASET_NAME = "sr-traces"
+_SR_VERSION = "sr-agent"
 _REDACTION_BLOCKED_MESSAGE = (
     "Trace upload blocked: secret redaction failed, so the transcript may "
     "still contain credentials or other sensitive data. Fix the redactor or "
@@ -48,7 +48,7 @@ class TraceRedactionError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Conversion: Hermes OpenAI-format messages -> Claude Code JSONL
+# Conversion: SR OpenAI-format messages -> Claude Code JSONL
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
@@ -58,7 +58,7 @@ def _now_iso() -> str:
 def _redact(text: Any, enabled: bool) -> Any:
     """Redact secrets from a string body when redaction is enabled.
 
-    Non-strings pass through untouched. Uses Hermes' shared redactor with
+    Non-strings pass through untouched. Uses SR' shared redactor with
     ``force=True`` so an upload always scrubs known secret shapes even if
     the user disabled log redaction globally.
     """
@@ -140,7 +140,7 @@ def build_trace_jsonl(
     cwd: str = "",
     redact: bool = True,
 ) -> str:
-    """Render Hermes conversation messages as Claude Code JSONL text.
+    """Render SR conversation messages as Claude Code JSONL text.
 
     Each non-system message becomes one JSONL line in the Claude Code
     transcript shape the HF Agent Trace Viewer auto-detects:
@@ -176,7 +176,7 @@ def build_trace_jsonl(
             "userType": "external",
             "cwd": cwd or os.getcwd(),
             "sessionId": session_id,
-            "version": _HERMES_VERSION,
+            "version": _SR_VERSION,
             "gitBranch": git_branch,
             "uuid": turn_uuid,
             "timestamp": base_ts,
@@ -258,9 +258,9 @@ _NO_TOKEN_MESSAGE = (
     "\n"
     "1. Create a token with WRITE access at https://huggingface.co/settings/tokens\n"
     "   (New token -> type \"Write\" -> copy it).\n"
-    "2. Add it to your environment as HF_TOKEN (e.g. in ~/.hermes/.env):\n"
+    "2. Add it to your environment as HF_TOKEN (e.g. in ~/.sr/.env):\n"
     "     HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx\n"
-    "3. Run /upload-trace again (or `hermes trace upload`)."
+    "3. Run /upload-trace again (or `sr trace upload`)."
 )
 
 
@@ -272,58 +272,7 @@ def _do_upload(
     dataset_name: str = DEFAULT_DATASET_NAME,
     private: bool = True,
 ) -> str:
-    """Create (idempotently) the private dataset and push the trace file.
-
-    Returns a user-facing status string. Never raises.
-    """
-    try:
-        from tools import lazy_deps
-        lazy_deps.ensure("tool.trace_upload", prompt=False)
-    except Exception:
-        # lazy-install unavailable/declined — fall through to the import,
-        # which surfaces the install hint below if the package is missing.
-        pass
-    try:
-        from huggingface_hub import HfApi
-    except ImportError:
-        return ("Hugging Face upload needs the `huggingface_hub` package "
-                "(`pip install huggingface_hub`).")
-
-    api = HfApi(token=token)
-    try:
-        who = api.whoami()
-        user = who.get("name") if isinstance(who, dict) else None
-    except Exception as e:
-        logger.warning("HF whoami failed: %s", e)
-        return ("Your Hugging Face token was rejected (whoami failed). "
-                "Make sure it has WRITE access and isn't expired.")
-    if not user:
-        return "Could not resolve your Hugging Face username from the token."
-
-    repo_id = f"{user}/{dataset_name}"
-    try:
-        api.create_repo(
-            repo_id=repo_id, repo_type="dataset", private=private, exist_ok=True,
-        )
-    except Exception as e:
-        logger.warning("HF create_repo failed for %s: %s", repo_id, e)
-        return f"Could not create/access dataset {repo_id}: {e}"
-
-    path_in_repo = f"sessions/{session_id}.jsonl"
-    try:
-        api.upload_file(
-            path_or_fileobj=jsonl.encode("utf-8"),
-            path_in_repo=path_in_repo,
-            repo_id=repo_id,
-            repo_type="dataset",
-            commit_message=f"add session trace {session_id}",
-        )
-    except Exception as e:
-        logger.warning("HF upload_file failed for %s: %s", repo_id, e)
-        return f"Upload to Hugging Face failed: {e}"
-
-    return (f"Uploaded -> https://huggingface.co/datasets/{repo_id}/blob/main/{path_in_repo}\n"
-            f"View in the trace viewer: https://huggingface.co/datasets/{repo_id}")
+    return "❌ Trace uploads are disabled in this corporate environment for security."
 
 
 def load_session_messages(
@@ -334,7 +283,7 @@ def load_session_messages(
     Returns ``(messages, meta)``. ``meta`` is ``{}`` when the session row is
     missing (messages may still be present for a live, untitled session).
     """
-    from hermes_state import SessionDB
+    from sr_state import SessionDB
     db = SessionDB(db_path=db_path) if db_path else SessionDB()
     resolved = db.resolve_session_id(session_id) or session_id
     meta = db.get_session(resolved) or {}
@@ -356,7 +305,7 @@ def upload_session_trace(
     """Top-level entry point used by the CLI/gateway/subcommand.
 
     Loads the session, converts it to Claude Code JSONL, and uploads it to
-    the user's private ``{user}/hermes-traces`` dataset. Returns a
+    the user's private ``{user}/sr-traces`` dataset. Returns a
     user-facing status string and never raises.
     """
     if not session_id:

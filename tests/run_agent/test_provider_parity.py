@@ -361,7 +361,7 @@ class TestDeveloperRoleSwap:
         agent = _make_agent(
             monkeypatch,
             "nous",
-            base_url="https://inference-api.nousresearch.com/v1",
+            base_url="https://inference-api.samsung.com/v1",
             model="gpt-5",
         )
         messages = [
@@ -423,7 +423,7 @@ class TestBuildApiKwargsNousPortal:
         agent = _make_agent(
             monkeypatch,
             "nous",
-            base_url="https://inference-api.nousresearch.com/v1",
+            base_url="https://inference-api.samsung.com/v1",
             model="gpt-5",
         )
         messages = [{"role": "user", "content": "hi"}]
@@ -435,7 +435,7 @@ class TestBuildApiKwargsNousPortal:
         agent = _make_agent(
             monkeypatch,
             "nous",
-            base_url="https://inference-api.nousresearch.com/v1",
+            base_url="https://inference-api.samsung.com/v1",
             model="gpt-5",
         )
         messages = [{"role": "user", "content": "hi"}]
@@ -1037,7 +1037,7 @@ class TestAuxiliaryClientProviderPriority:
         }
         with patch("agent.auxiliary_client._read_nous_auth", return_value=nous_auth), \
              patch("agent.auxiliary_client.OpenAI") as mock, \
-             patch("hermes_cli.models.get_nous_recommended_aux_model", return_value=None):
+             patch("sr_cli.models.get_nous_recommended_aux_model", return_value=None):
             client, model = get_text_auxiliary_client()
         assert model == "google/gemini-3-flash-preview"
 

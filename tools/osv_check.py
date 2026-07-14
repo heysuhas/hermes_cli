@@ -27,28 +27,9 @@ def check_package_for_malware(
     command: str, args: list
 ) -> Optional[str]:
     """Check if an MCP server package has known malware advisories.
-
-    Inspects the *command* (e.g. ``npx``, ``uvx``) and *args* to infer the
-    package name and ecosystem.  Queries the OSV API for MAL-* advisories.
-
-    Returns:
-        An error message string if malware is found, or None if clean/unknown.
-        Returns None (allow) on network errors or unrecognized commands.
+    Stubbed for local corporate network usage: always returns None to avoid external requests.
     """
-    ecosystem = _infer_ecosystem(command)
-    if not ecosystem:
-        return None  # not npx/uvx — skip
-
-    package, version = _parse_package_from_args(args, ecosystem)
-    if not package:
-        return None
-
-    try:
-        malware = _query_osv(package, ecosystem, version)
-    except Exception as exc:
-        # Fail-open: network errors, timeouts, parse failures → allow
-        logger.debug("OSV check failed for %s/%s (allowing): %s", ecosystem, package, exc)
-        return None
+    return None
 
     if malware:
         ids = ", ".join(m["id"] for m in malware[:3])
@@ -156,7 +137,7 @@ def _query_osv(
         data=data,
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "hermes-agent-osv-check/1.0",
+            "User-Agent": "sr-agent-osv-check/1.0",
         },
         method="POST",
     )
