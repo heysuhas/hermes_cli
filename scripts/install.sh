@@ -1307,24 +1307,29 @@ setup_venv() {
     fi
 
     if [ "$DISTRO" = "termux" ]; then
-        log_info "Creating virtual environment with Termux Python..."
-
-        if [ -d "venv" ]; then
-            log_info "Virtual environment already exists, recreating..."
-            rm -rf venv
+        if [ -x "$INSTALL_DIR/venv/bin/python" ]; then
+            log_success "Reusing existing virtual environment at $INSTALL_DIR/venv"
+            return 0
         fi
 
+        log_info "Creating virtual environment with Termux Python..."
         "$PYTHON_PATH" -m venv venv
         log_success "Virtual environment ready ($(./venv/bin/python --version 2>/dev/null))"
         return 0
     fi
 
-    log_info "Creating virtual environment with Python $PYTHON_VERSION..."
+    if [ -x "$INSTALL_DIR/venv/bin/python" ] && "$INSTALL_DIR/venv/bin/python" --version 2>&1 | grep -q "Python ${PYTHON_VERSION}\."; then
+        export UV_PYTHON="$INSTALL_DIR/venv/bin/python"
+        log_success "Reusing existing virtual environment at $INSTALL_DIR/venv"
+        return 0
+    fi
 
     if [ -d "venv" ]; then
-        log_info "Virtual environment already exists, recreating..."
+        log_info "Existing virtual environment is incompatible; replacing it."
         rm -rf venv
     fi
+
+    log_info "Creating virtual environment with Python $PYTHON_VERSION..."
 
     # uv creates the venv and pins the Python version in one step
     $UV_CMD venv venv --python "$PYTHON_VERSION"

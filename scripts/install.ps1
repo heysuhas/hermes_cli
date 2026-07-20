@@ -1634,6 +1634,17 @@ function Install-Venv {
         $script:PythonVersion = $resolved
     }
 
+    $existingVenvPython = Join-Path $InstallDir "venv\Scripts\python.exe"
+    if (Test-Path $existingVenvPython) {
+        $existingVersion = (& $existingVenvPython --version 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $existingVersion -match "Python $([regex]::Escape($PythonVersion))(\.|$)") {
+            $env:UV_PYTHON = $existingVenvPython
+            Write-Success "Reusing existing virtual environment at $InstallDir\venv ($existingVersion)"
+            return
+        }
+        Write-Info "Existing virtual environment is incompatible; replacing it."
+    }
+
     Write-Info "Creating virtual environment with Python $PythonVersion..."
     
     Push-Location $InstallDir

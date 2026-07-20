@@ -10,38 +10,41 @@ SR Agent is a local-first AI agent with a Python runtime, terminal interface, ga
 - Windows builds: Windows 10/11, WebView2, and the native build tools required by Electron dependencies
 - Tauri builds: the Rust toolchain and the platform prerequisites documented by [Tauri](https://tauri.app/start/prerequisites/)
 
-`uv` is recommended for Python environment and dependency management. Use PowerShell or Git Bash on Windows.
+Use the repository launcher; no manual virtual-environment setup is required. It provisions one managed environment and reuses it for both source and packaged runs:
 
-## Development setup
+- Windows: `%LOCALAPPDATA%\sr\sr-agent\venv`
+- macOS/Linux: `~/.sr/sr-agent/venv`
 
-From the repository root:
+The launcher installs the managed `uv` tool when needed, creates the environment only when it is missing or incompatible, and synchronizes the current checkout into it.
+
+### Windows PowerShell
 
 ```powershell
-uv venv --python 3.11
-.\.venv\Scripts\Activate.ps1
-uv pip install -e ".[all,dev]"
+.\scripts\run-local.ps1
+```
+
+Pass agent commands and options after the launcher:
+
+```powershell
+.\scripts\run-local.ps1 --help
+.\scripts\run-local.ps1 setup
+```
+
+### macOS/Linux/WSL
+
+```bash
+./scripts/run-local.sh
+./scripts/run-local.sh --help
+```
+
+Install JavaScript workspace dependencies once before using the desktop client:
+
+```powershell
 npm install
-```
-
-## Use the agent locally
-
-Start the interactive CLI:
-
-```powershell
-python -m sr_cli.main
-```
-
-Show available CLI commands:
-
-```powershell
-python -m sr_cli.main --help
-```
-
-Start the desktop client in development mode:
-
-```powershell
 npm --workspace apps/desktop run dev
 ```
+
+The desktop development process uses the same managed environment. If the environment already exists, it is reused rather than creating a repository-local `.venv`.
 
 ## Build Windows installers
 
@@ -97,10 +100,10 @@ Run a focused Python test with:
 scripts/run_tests.sh tests/path/to/test_file.py -q
 ```
 
-From PowerShell, the equivalent is:
+From Windows PowerShell, use the shared managed interpreter:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/path/to/test_file.py -q
+& "$env:LOCALAPPDATA\sr\sr-agent\venv\Scripts\python.exe" -m pytest tests/path/to/test_file.py -q
 ```
 
 Installer builds should be validated on Windows.

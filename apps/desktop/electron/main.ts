@@ -3308,14 +3308,14 @@ function writeDefaultProjectDir(dir) {
 }
 
 function createPythonBackend(root, label, backendArgs, options: any = {}) {
-  const python = findPythonForRoot(root)
+  const venvRoot = options.venvRoot || path.join(root, 'venv')
+  const venvPython = getVenvPython(venvRoot)
+  const python = options.venvRoot && fileExists(venvPython) ? venvPython : findPythonForRoot(root)
 
   if (!python) {
     return null
   }
 
-  const venvRoot = path.join(root, 'venv')
-  const venvPython = getVenvPython(venvRoot)
   const command = IS_WINDOWS && fileExists(venvPython) ? venvPython : python
 
   return {
@@ -3376,7 +3376,12 @@ function resolveSRBackend(backendArgs) {
   //    installed `sr` on PATH so local Python edits are actually exercised.
   //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isSRSourceRoot.)
   if (!IS_PACKAGED && isSRSourceRoot(SOURCE_REPO_ROOT)) {
-    const backend = createPythonBackend(SOURCE_REPO_ROOT, `SR source at ${SOURCE_REPO_ROOT}`, backendArgs)
+    const backend = createPythonBackend(SOURCE_REPO_ROOT, `SR source at ${SOURCE_REPO_ROOT}`, backendArgs, {
+      // Source and packaged runs share the managed runtime. The local launcher
+      // provisions this path before development starts; using it here avoids a
+      // second repository-local venv when Electron is launched afterward.
+      venvRoot: VENV_ROOT
+    })
 
     if (backend) {
       return backend

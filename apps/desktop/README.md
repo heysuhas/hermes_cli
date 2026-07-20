@@ -56,13 +56,15 @@ The installer handles everything for you (Python 3.11+, a portable Git, ripgrep)
 
 ## Development
 
-Want to hack on the app itself? Install workspace deps from the repo root once, then run the dev server from this directory:
+Want to hack on the app itself? From the repository root, provision the shared runtime first, then install workspace dependencies:
 
-```bash
-npm install          # from repo root — links apps/desktop, web, apps/shared
-cd apps/desktop
-npm run dev          # Vite renderer + Electron, which boots the Python backend
+```powershell
+.\scripts\run-local.ps1 --help   # creates/reuses the managed Python environment
+npm install                       # links apps/desktop, web, and apps/shared
+npm --workspace apps/desktop run dev
 ```
+
+On macOS/Linux/WSL, use `./scripts/run-local.sh --help` instead. The desktop app and packaged executable share the managed environment under `SR_HOME`; no repository-local `.venv` is required.
 
 Point the app at a specific source checkout, or sandbox it away from your real config:
 
