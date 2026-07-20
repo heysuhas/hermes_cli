@@ -35,6 +35,46 @@ def _venv_python(venv: Path) -> Path:
     return venv / relative
 
 
+def _venv_bin(venv: Path) -> Path:
+    return venv / ("Scripts" if sys.platform == "win32" else "bin")
+
+
+def _ensure_path_entry(entry: Path) -> None:
+    """Make the managed CLI directory available now and in future shells."""
+    entry_text = str(entry)
+    current = os.environ.get("PATH", "")
+    entries = [item for item in current.split(os.pathsep) if item]
+    if not any(os.path.normcase(item.rstrip("\\/")) == os.path.normcase(entry_text.rstrip("\\/")) for item in entries):
+        os.environ["PATH"] = os.pathsep.join([entry_text, *entries])
+
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                persisted = winreg.QueryValueEx(key, "Path")[0]
+                persisted_entries = [item for item in persisted.split(";") if item]
+                if not any(item.casefold().rstrip("\\/") == entry_text.casefold().rstrip("\\/") for item in persisted_entries):
+                    winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join([entry_text, *persisted_entries]))
+        except (OSError, ImportError):
+            # The current process still gets the path; locked-down machines may
+            # reject persistent user-environment updates.
+            pass
+        return
+
+    # Login shells read ~/.profile. Keep one managed line and never duplicate it.
+    profile = Path.home() / ".profile"
+    marker = "# SR Agent managed CLI"
+    try:
+        existing = profile.read_text(encoding="utf-8") if profile.exists() else ""
+        line = f'export PATH="{entry_text}:$PATH"'
+        if marker not in existing:
+            separator = "" if not existing or existing.endswith("\n") else "\n"
+            profile.write_text(f"{existing}{separator}{marker}\n{line}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _is_expected_python(python: Path) -> bool:
     try:
         result = subprocess.run(
@@ -116,6 +156,7 @@ def ensure_source_runtime() -> None:
         return
 
     python = _prepare_environment(root)
+    _ensure_path_entry(_venv_bin(python.parent))
     env = os.environ.copy()
     env[_BOOTSTRAPPED_ENV] = "1"
     env["PYTHONPATH"] = os.pathsep.join(
