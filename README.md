@@ -39,6 +39,13 @@ Show available CLI commands and trigger the same automatic setup:
 python -m sr_cli.main --help
 ```
 
+The bootstrap adds the managed CLI directory to PATH automatically. Open a new terminal after the first run so the updated PATH is loaded, then use the short command normally:
+
+```powershell
+sr setup
+sr --help
+```
+
 Start the desktop client in development mode:
 
 ```powershell
