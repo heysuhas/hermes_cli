@@ -52,7 +52,10 @@ def _ensure_path_entry(entry: Path) -> None:
             import winreg
 
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-                persisted = winreg.QueryValueEx(key, "Path")[0]
+                try:
+                    persisted = winreg.QueryValueEx(key, "Path")[0] or ""
+                except FileNotFoundError:
+                    persisted = ""
                 persisted_entries = [item for item in persisted.split(";") if item]
                 if not any(item.casefold().rstrip("\\/") == entry_text.casefold().rstrip("\\/") for item in persisted_entries):
                     winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join([entry_text, *persisted_entries]))
