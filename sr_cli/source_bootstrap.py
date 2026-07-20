@@ -35,8 +35,6 @@ def _venv_python(venv: Path) -> Path:
     return venv / relative
 
 
-def _venv_bin(venv: Path) -> Path:
-    return venv / ("Scripts" if sys.platform == "win32" else "bin")
 
 
 def _ensure_path_entry(entry: Path) -> None:
@@ -159,7 +157,7 @@ def ensure_source_runtime() -> None:
         return
 
     python = _prepare_environment(root)
-    _ensure_path_entry(_venv_bin(python.parent))
+    _ensure_path_entry(python.parent)
     env = os.environ.copy()
     env[_BOOTSTRAPPED_ENV] = "1"
     env["PYTHONPATH"] = os.pathsep.join(
