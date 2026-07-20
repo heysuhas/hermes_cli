@@ -43,9 +43,20 @@ Usage:
     sr claw migrate --dry-run  # Preview migration without changes
 """
 
-# IMPORTANT: sr_bootstrap must be the very first import — it sets up
-# UTF-8 stdio on Windows so print()/subprocess children don't hit
-# UnicodeEncodeError with non-ASCII characters.  No-op on POSIX.
+# Source checkouts bootstrap their canonical managed environment before any
+# dependency-heavy imports. Installed and already-bootstrapped environments
+# return immediately; direct `python -m sr_cli.main` remains the public entry.
+try:
+    from sr_cli.source_bootstrap import ensure_source_runtime
+    ensure_source_runtime()
+except ModuleNotFoundError:
+    # A partially updated editable install may not have the new helper yet.
+    # Continue so `sr update` can repair the checkout.
+    pass
+
+# IMPORTANT: sr_bootstrap must be the very first import after source setup — it
+# sets up UTF-8 stdio on Windows so print()/subprocess children don't hit
+# UnicodeEncodeError with non-ASCII characters. No-op on POSIX.
 #
 # Guarded against ModuleNotFoundError because ``sr_bootstrap`` is a
 # top-level module registered via pyproject.toml's ``py-modules`` list.
