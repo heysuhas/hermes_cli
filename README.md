@@ -10,28 +10,30 @@ SR Agent is a local-first AI agent with a Python runtime, terminal interface, ga
 - Windows builds: Windows 10/11, WebView2, and the native build tools required by Electron dependencies
 - Tauri builds: the Rust toolchain and the platform prerequisites documented by [Tauri](https://tauri.app/start/prerequisites/)
 
-`uv` is recommended for Python environment and dependency management. Use PowerShell or Git Bash on Windows.
+No manual virtual-environment or `uv` installation is required. The first `python -m sr_cli.main` command bootstraps the managed environment automatically. Use PowerShell or Git Bash on Windows.
 
 ## Development setup
 
-From the repository root:
+From the repository root, install the JavaScript workspace dependencies:
 
 ```powershell
-uv venv --python 3.11
-.\.venv\Scripts\Activate.ps1
-uv pip install -e ".[all,dev]"
 npm install
 ```
 
+The managed Python environment is shared by source runs and the packaged desktop application:
+
+- Windows: `%LOCALAPPDATA%\sr\sr-agent\venv`
+- macOS/Linux: `~/.sr/sr-agent/venv`
+
 ## Use the agent locally
 
-Start the interactive CLI:
+Start the interactive CLI. On the first run, this installs managed `uv`, creates or reuses the shared virtual environment, installs dependencies, and then starts the CLI:
 
 ```powershell
 python -m sr_cli.main
 ```
 
-Show available CLI commands:
+Show available CLI commands and trigger the same automatic setup:
 
 ```powershell
 python -m sr_cli.main --help
@@ -97,10 +99,10 @@ Run a focused Python test with:
 scripts/run_tests.sh tests/path/to/test_file.py -q
 ```
 
-From PowerShell, the equivalent is:
+From PowerShell, run the focused test with the shared managed interpreter:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/path/to/test_file.py -q
+& "$env:LOCALAPPDATA\sr\sr-agent\venv\Scripts\python.exe" -m pytest tests/path/to/test_file.py -q
 ```
 
 Installer builds should be validated on Windows.
