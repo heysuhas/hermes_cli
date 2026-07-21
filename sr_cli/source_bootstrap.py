@@ -57,6 +57,15 @@ def _ensure_path_entry(entry: Path) -> None:
                 persisted_entries = [item for item in persisted.split(";") if item]
                 if not any(item.casefold().rstrip("\\/") == entry_text.casefold().rstrip("\\/") for item in persisted_entries):
                     winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join([entry_text, *persisted_entries]))
+                    
+                    import ctypes
+                    HWND_BROADCAST = 0xFFFF
+                    WM_SETTINGCHANGE = 0x001A
+                    SMTO_ABORTIFHUNG = 0x0002
+                    result = ctypes.c_long()
+                    ctypes.windll.user32.SendMessageTimeoutW(
+                        HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 1000, ctypes.byref(result)
+                    )
         except (OSError, ImportError):
             # The current process still gets the path; locked-down machines may
             # reject persistent user-environment updates.

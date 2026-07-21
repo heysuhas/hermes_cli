@@ -114,6 +114,38 @@ From PowerShell, run the focused test with the shared managed interpreter:
 
 Installer builds should be validated on Windows.
 
+## Troubleshooting
+
+### Corporate Proxy / SSL Errors during npm install
+If you are behind a corporate proxy and `npm install` fails with an SSL verification error (e.g., `unable to verify the first certificate` inside `node install.js`), you can bypass the check for the current terminal session:
+
+**PowerShell:**
+```powershell
+$env:NODE_TLS_REJECT_UNAUTHORIZED="0"
+npm install
+```
+
+**Command Prompt:**
+```cmd
+set NODE_TLS_REJECT_UNAUTHORIZED=0
+npm install
+```
+
+### Corporate Proxy / SSL Errors during python -m sr_cli.main
+If `python -m sr_cli.main` fails to download Python via `uv` with an `invalid peer certificate: UnknownIssuer` error, you can force `uv` to use the native Windows certificate store (which trusts your corporate proxy):
+
+**PowerShell:**
+```powershell
+$env:UV_NATIVE_TLS="1"
+python -m sr_cli.main
+```
+
+**Command Prompt:**
+```cmd
+set UV_NATIVE_TLS=1
+python -m sr_cli.main
+```
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
