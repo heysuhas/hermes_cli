@@ -3053,8 +3053,12 @@ class TestWebServerEndpoints:
         assets.mkdir(parents=True)
         index_path = dist / "index.html"
         css_path = assets / "app.css"
+        js_path = assets / "app.js"
+        svg_path = assets / "icon.svg"
         index_path.write_text("<html><head></head><body>cafe cafe</body></html>", encoding="utf-8")
         css_path.write_text("body::before { content: 'cafe'; }", encoding="utf-8")
+        js_path.write_text("export default 1;", encoding="utf-8")
+        svg_path.write_text("<svg></svg>", encoding="utf-8")
 
         original_read_text = Path.read_text
         seen_encodings = {}
@@ -3079,6 +3083,15 @@ class TestWebServerEndpoints:
         css_resp = spa_client.get("/assets/app.css", headers={"x-forwarded-prefix": "/sr"})
         assert css_resp.status_code == 200
         assert "content: 'cafe';" in css_resp.text
+        assert css_resp.headers["content-type"].startswith("text/css")
+
+        js_resp = spa_client.get("/assets/app.js")
+        assert js_resp.status_code == 200
+        assert js_resp.headers["content-type"].startswith("application/javascript")
+
+        svg_resp = spa_client.get("/assets/icon.svg")
+        assert svg_resp.status_code == 200
+        assert svg_resp.headers["content-type"].startswith("image/svg+xml")
 
         assert seen_encodings == {"index": "utf-8", "css": "utf-8"}
 

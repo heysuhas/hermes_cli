@@ -26,6 +26,14 @@ import importlib.util
 import json
 import logging
 import mimetypes
+
+# Windows can load incorrect MIME mappings for frontend assets from the
+# registry. Register the types before Starlette imports FileResponse, which
+# caches mimetypes.guess_type at import time.
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+
 import os
 import re
 import secrets
